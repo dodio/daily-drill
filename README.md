@@ -2,7 +2,11 @@
 
 给小学生每天用的轻量练习应用。做题、记账、看连续天数——不注册、不联网、不上传任何数据。
 
+**线上地址：<https://dodio.github.io/daily-drill/>**
+
 纯前端，所有练习记录存在浏览器 `localStorage` 里。
+
+![首页](docs/screenshots/home.png)
 
 ## 技术栈
 
@@ -68,10 +72,11 @@ npm run typecheck  # 只做类型检查
 
 ## 部署
 
-推到 `main` / `master` 分支后，GitHub Actions 自动构建并发布到 Pages（见 `.github/workflows/deploy.yml`）。
+推送到 `main` / `master` 后，GitHub Actions 自动构建并发布到 GitHub Pages（见 `.github/workflows/deploy.yml`）。
 
-- 仓库名是 `daily-drill` → 访问 `https://<用户名>.github.io/daily-drill/`
-- 想绑独立域名 → 去掉 workflow 里的 `VITE_BASE` 环境变量，让 `base` 回到 `/`
+- **线上地址：<https://dodio.github.io/daily-drill/>**
+- 仓库名是 `daily-drill`，站点挂在 `/<仓库名>/` 子路径下，构建时由 workflow 注入 `VITE_BASE` 保证资源路径正确
+- 想绑独立域名 → 去掉 workflow 里的 `VITE_BASE` 环境变量（让 `base` 回到 `/`），并在 `public/` 放 `CNAME` 文件
 
 ## 数据模型
 
