@@ -402,6 +402,12 @@ input {
   margin-bottom: 8px;
 }
 
+.field__label-hint {
+  font-weight: 500;
+  color: var(--ink-3);
+  margin-left: 4px;
+}
+
 .pills {
   display: flex;
   flex-wrap: wrap;
@@ -423,6 +429,13 @@ input {
   background: var(--primary-soft);
   border-color: var(--primary);
   color: var(--primary-deep);
+}
+
+.field__hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-3);
 }
 
 /* ---------- 练习流程 ---------- */
@@ -468,6 +481,71 @@ input {
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* ---------- 限时模式 ---------- */
+
+.quiz-head__timer {
+  flex: none;
+  min-width: 50px;
+  text-align: right;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.quiz-head__timer--urgent {
+  color: var(--danger);
+  animation: time-pulse 1s ease-in-out infinite;
+}
+
+/* 时间条换成蓝色，和「题数进度」在视觉上区分开 */
+.progress__bar--time {
+  background: linear-gradient(90deg, #9db0ff, var(--accent));
+}
+
+.progress__bar--urgent {
+  background: linear-gradient(90deg, #ff9c80, var(--danger));
+}
+
+@keyframes time-pulse {
+  50% {
+    opacity: 0.42;
+  }
+}
+
+.score-strip {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.score-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 5px 13px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-chip b {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.score-chip--ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.score-chip--bad {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .question {

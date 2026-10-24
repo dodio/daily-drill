@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { PracticeResult, SessionRecord } from '../../types/index.ts';
 import { useDailyLog } from '../../store/DailyLogProvider.tsx';
 import { navigate } from '../../lib/router.ts';
@@ -7,8 +7,6 @@ import { ResultCard } from '../../components/ResultCard.tsx';
 import { MathSetup } from './MathSetup.tsx';
 import type { MathConfig } from './MathSetup.tsx';
 import { MathQuiz } from './MathQuiz.tsx';
-import { generateQuestions } from './generator.ts';
-import type { Question } from './generator.ts';
 
 type Phase = 'setup' | 'quiz' | 'result';
 
@@ -16,40 +14,38 @@ export function MathPage() {
   const { record, today } = useDailyLog();
   const [phase, setPhase] = useState<Phase>('setup');
   const [config, setConfig] = useState<MathConfig | null>(null);
-  const [questions, setQuestions] = useState<Question[]>([]);
   const [result, setResult] = useState<PracticeResult | null>(null);
 
   const start = (nextConfig: MathConfig) => {
     setConfig(nextConfig);
-    setQuestions(generateQuestions(nextConfig));
     setResult(null);
     setPhase('quiz');
   };
 
-  const finish = (practiceResult: PracticeResult) => {
-    const session: SessionRecord = {
-      id: uid(),
-      subject: 'math',
-      date: today,
-      startedAt: Date.now() - practiceResult.durationMs,
-      durationMs: practiceResult.durationMs,
-      total: practiceResult.total,
-      correct: practiceResult.correct,
-      wrongItems: practiceResult.wrongItems,
-    };
-    record(session);
-    setResult(practiceResult);
-    setPhase('result');
-  };
+  const finish = useCallback(
+    (practiceResult: PracticeResult) => {
+      const session: SessionRecord = {
+        id: uid(),
+        subject: 'math',
+        date: today,
+        startedAt: Date.now() - practiceResult.durationMs,
+        durationMs: practiceResult.durationMs,
+        total: practiceResult.total,
+        correct: practiceResult.correct,
+        mode: config?.mode,
+        wrongItems: practiceResult.wrongItems,
+      };
+      record(session);
+      setResult(practiceResult);
+      setPhase('result');
+    },
+    [record, today, config?.mode],
+  );
 
-  if (phase === 'quiz') {
+  if (phase === 'quiz' && config) {
     return (
       <div className="app">
-        <MathQuiz
-          questions={questions}
-          onFinish={finish}
-          onExit={() => setPhase('setup')}
-        />
+        <MathQuiz config={config} onFinish={finish} onExit={() => setPhase('setup')} />
       </div>
     );
   }
@@ -82,6 +78,7 @@ export function MathPage() {
           total={result.total}
           correct={result.correct}
           durationMs={result.durationMs}
+          timeLimitMs={config?.mode === 'timed' ? config.durationMs : undefined}
           wrongItems={result.wrongItems}
           onRetry={() => {
             if (config) start(config);

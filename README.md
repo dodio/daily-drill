@@ -45,8 +45,8 @@ src/
 ├── modules/                  每个科目一个目录，互相独立
 │   ├── math/                 口算
 │   │   ├── MathPage.tsx      页面编排：setup → quiz → result
-│   │   ├── MathSetup.tsx     难度/题型/题量
-│   │   ├── MathQuiz.tsx      答题（数字键盘 + 物理键盘）
+│   │   ├── MathSetup.tsx     难度 / 题型（可多选）/ 练法（按题数 or 按时间）
+│   │   ├── MathQuiz.tsx      答题（数字键盘 + 物理键盘；限时模式带倒计时）
 │   │   └── generator.ts      题目生成
 │   └── recite/               背诵
 │       ├── RecitePage.tsx
@@ -87,6 +87,7 @@ npm run typecheck  # 只做类型检查
   id, subject, date,        // date 是本地时区 YYYY-MM-DD，按天聚合靠它
   startedAt, durationMs,
   total, correct,
+  mode,                     // 'count' | 'timed'，可选；旧记录没有此字段，按按题数处理
   wrongItems: [{ prompt, yourAnswer, correctAnswer }]
 }
 ```
@@ -108,6 +109,7 @@ npm run typecheck  # 只做类型检查
 ## 路线图
 
 - [x] 口算：加减乘除、三档难度、数字键盘
+- [x] 口算限时模式：2 / 5 / 10 分钟，时间内统计答对答错与每分钟题数
 - [x] 背诵：古诗接句四选一
 - [ ] 英语单词（看词选义）
 - [ ] 错题本：跨天沉淀、只练错题

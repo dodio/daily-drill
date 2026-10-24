@@ -18,6 +18,8 @@ export interface SessionRecord {
   durationMs: number;
   total: number;
   correct: number;
+  /** 练法。旧记录没有这个字段，按「按题数」处理 */
+  mode?: 'count' | 'timed';
   wrongItems: WrongItem[];
 }
 

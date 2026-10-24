@@ -1,5 +1,6 @@
 export type Difficulty = 'easy' | 'normal' | 'hard';
-export type Topic = 'add' | 'sub' | 'mul' | 'div' | 'mix';
+/** 单个题型。可以多选叠加，选几个就混着出几个——「混合」只是全选的快捷方式 */
+export type TopicKind = 'add' | 'sub' | 'mul' | 'div';
 
 export interface Question {
   id: string;
@@ -14,12 +15,13 @@ export const DIFFICULTY_LABELS: Record<Difficulty, string> = {
   hard: '三年级+ · 多位',
 };
 
-export const TOPIC_LABELS: Record<Topic, string> = {
+export const TOPIC_KINDS: TopicKind[] = ['add', 'sub', 'mul', 'div'];
+
+export const TOPIC_LABELS: Record<TopicKind, string> = {
   add: '加法',
   sub: '减法',
   mul: '乘法',
   div: '除法',
-  mix: '混合',
 };
 
 function randInt(min: number, max: number): number {
@@ -75,38 +77,55 @@ function makeDiv(difficulty: Difficulty): { prompt: string; answer: number } {
   return { prompt: `${dividend} ÷ ${divisor}`, answer: quotient };
 }
 
-const BUILDERS: Record<Exclude<Topic, 'mix'>, (d: Difficulty) => { prompt: string; answer: number }> = {
+const BUILDERS: Record<TopicKind, (d: Difficulty) => { prompt: string; answer: number }> = {
   add: makeAdd,
   sub: makeSub,
   mul: makeMul,
   div: makeDiv,
 };
 
-const TOPICS: Exclude<Topic, 'mix'>[] = ['add', 'sub', 'mul', 'div'];
-
 export interface GenerateOptions {
   difficulty: Difficulty;
-  topic: Topic;
+  /** 可多选；为空按全选题型处理 */
+  topics: TopicKind[];
   count: number;
 }
 
+let seq = 0;
+
+/**
+ * 出一题。限时模式用它按需取题——时间到之前不知道一共要出多少题，
+ * 所以不能像按题数模式那样预先整批生成。
+ * topics 有多个时随机取一个，这就是"叠加"出题的实现；
+ * avoidPrompt 用于避免和上一题完全相同（题型少时很容易撞）。
+ */
+export function makeQuestion(
+  difficulty: Difficulty,
+  topics: TopicKind[],
+  avoidPrompt?: string,
+): Question {
+  const pool = topics.length > 0 ? topics : TOPIC_KINDS;
+  let built = { prompt: '', answer: 0 };
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    built = BUILDERS[pick(pool)](difficulty);
+    if (built.prompt !== avoidPrompt) break;
+  }
+  seq += 1;
+  return { id: `q${seq}`, prompt: built.prompt, answer: built.answer };
+}
+
 /** 生成一组不重复的题目。 */
-export function generateQuestions({ difficulty, topic, count }: GenerateOptions): Question[] {
+export function generateQuestions({ difficulty, topics, count }: GenerateOptions): Question[] {
   const out: Question[] = [];
   const seen = new Set<string>();
   let guard = 0;
 
   while (out.length < count && guard < count * 50) {
     guard += 1;
-    const picked = topic === 'mix' ? pick(TOPICS) : topic;
-    const built = BUILDERS[picked](difficulty);
+    const built = makeQuestion(difficulty, topics, out[out.length - 1]?.prompt);
     if (seen.has(built.prompt)) continue;
     seen.add(built.prompt);
-    out.push({
-      id: `${out.length}-${built.prompt}`,
-      prompt: built.prompt,
-      answer: built.answer,
-    });
+    out.push({ ...built, id: `${out.length}-${built.prompt}` });
   }
 
   return out;
