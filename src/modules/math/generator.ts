@@ -114,19 +114,51 @@ export function makeQuestion(
   return { id: `q${seq}`, prompt: built.prompt, answer: built.answer };
 }
 
-/** 生成一组不重复的题目。 */
+/**
+ * 归一化题干，用来判断"是不是同一道题"。
+ *
+ * 加法和乘法满足交换律，3 × 8 与 8 × 3 在口算练习里就是同一道，
+ * 不做归并的话，表内乘法 64 种写法里其实只有 36 道不同的题。
+ * 减法和除法不可交换，原样保留。
+ */
+function canonical(prompt: string): string {
+  const [a, op, b] = prompt.split(' ');
+  if (op !== '+' && op !== '×') return prompt;
+  return Number(a) <= Number(b) ? prompt : `${b} ${op} ${a}`;
+}
+
+/** id 里带上序号，same题出现两次时也不会撞 key */
+let batchSeq = 0;
+
+/**
+ * 生成一组题目。
+ *
+ * 去重是"软"的：先按同题只出一次铺开，题库不够时才逐级放宽到每题两次、三次……
+ *
+ * 原因很实在——低难度的乘除法本质题目太少（一年级 2~5 的乘法口诀只有 10 道），
+ * 设 20 题时死守去重会只出 12 道就结束，孩子做完发现和设定的题数对不上。
+ * 与其少给题，不如让这十道题各练两遍，对刚学口诀的孩子本来也更合适。
+ */
 export function generateQuestions({ difficulty, topics, count }: GenerateOptions): Question[] {
+  batchSeq += 1;
   const out: Question[] = [];
-  const seen = new Set<string>();
-  let guard = 0;
+  const used = new Map<string, number>();
 
-  while (out.length < count && guard < count * 50) {
-    guard += 1;
-    const built = makeQuestion(difficulty, topics, out[out.length - 1]?.prompt);
-    if (seen.has(built.prompt)) continue;
-    seen.add(built.prompt);
-    out.push({ ...built, id: `${out.length}-${built.prompt}` });
-  }
+  const fill = (limit: number) => {
+    let guard = 0;
+    while (out.length < count && guard < count * 40) {
+      guard += 1;
+      const prev = out[out.length - 1]?.prompt;
+      const built = makeQuestion(difficulty, topics, prev);
+      const key = canonical(built.prompt);
+      // 不连着出同一道——就算放宽了重复上限，紧挨着来两道一样的也像出错
+      if (prev !== undefined && key === canonical(prev)) continue;
+      if ((used.get(key) ?? 0) >= limit) continue;
+      used.set(key, (used.get(key) ?? 0) + 1);
+      out.push({ ...built, id: `b${batchSeq}-${out.length}-${built.prompt}` });
+    }
+  };
 
+  for (let limit = 1; limit <= 8 && out.length < count; limit += 1) fill(limit);
   return out;
 }

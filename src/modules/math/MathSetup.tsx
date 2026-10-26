@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Difficulty, TopicKind } from './generator.ts';
 import { DIFFICULTY_LABELS, TOPIC_KINDS, TOPIC_LABELS } from './generator.ts';
+import { readPref, writePref } from '../../lib/prefs.ts';
 
 export type MathMode = 'count' | 'timed';
 
@@ -28,13 +29,37 @@ const COUNTS = [10, 20];
 /** 首期三档时长。超过 10 分钟对注意力是负担，暂不提供。 */
 const MINUTES = [2, 5, 10];
 const ALL_TOPICS = TOPIC_KINDS;
+const MODES: MathMode[] = ['count', 'timed'];
+
+/** 存下来的值可能是旧版本或被手改过，逐项校验，不合格就退回默认 */
+function pickOne<T>(allowed: readonly T[], value: unknown, fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
 
 export function MathSetup({ onStart }: { onStart: (config: MathConfig) => void }) {
-  const [difficulty, setDifficulty] = useState<Difficulty>('easy');
-  const [topics, setTopics] = useState<TopicKind[]>(ALL_TOPICS);
-  const [mode, setMode] = useState<MathMode>('count');
-  const [count, setCount] = useState(10);
-  const [minutes, setMinutes] = useState(2);
+  // 只读一次本地偏好，之后以 state 为准
+  const [snap] = useState<Record<string, unknown>>(() => {
+    const raw = readPref('math');
+    return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  });
+
+  const [difficulty, setDifficulty] = useState<Difficulty>(() =>
+    pickOne(DIFFICULTIES, snap.difficulty, 'easy'),
+  );
+  const [topics, setTopics] = useState<TopicKind[]>(() => {
+    const saved = Array.isArray(snap.topics)
+      ? ALL_TOPICS.filter((k) => (snap.topics as unknown[]).includes(k))
+      : [];
+    return saved.length > 0 ? saved : ALL_TOPICS;
+  });
+  const [mode, setMode] = useState<MathMode>(() => pickOne(MODES, snap.mode, 'count'));
+  const [count, setCount] = useState<number>(() => pickOne(COUNTS, snap.count, 10));
+  const [minutes, setMinutes] = useState<number>(() => pickOne(MINUTES, snap.minutes, 2));
+
+  // 每次改动都落盘，下次进来直接是上次的参数
+  useEffect(() => {
+    writePref('math', { difficulty, topics, mode, count, minutes });
+  }, [difficulty, topics, mode, count, minutes]);
 
   const isMix = topics.length === ALL_TOPICS.length;
 

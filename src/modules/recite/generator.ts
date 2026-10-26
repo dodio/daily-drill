@@ -1,5 +1,12 @@
-import type { Poem } from '../../data/poems.ts';
-import { POEMS } from '../../data/poems.ts';
+import type { Grade, Poem, Volume } from '../../data/poems.ts';
+import { poemsFor } from '../../data/poems.ts';
+
+export interface ReciteConfig {
+  grade: Grade;
+  volume: Volume;
+  /** 'all' 表示本册全部篇目，否则是具体篇目 id */
+  poemId: string;
+}
 
 export interface ReciteQuestion {
   id: string;
@@ -18,11 +25,6 @@ function shuffle<T>(input: T[]): T[] {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
   return arr;
-}
-
-/** 所有诗句的扁平池，用来抽干扰项。 */
-function allLines(): string[] {
-  return POEMS.flatMap((p) => p.lines);
 }
 
 function buildWrongChoices(answer: string, prompt: string, pool: string[], count: number): string[] {
@@ -53,15 +55,20 @@ export const MAX_QUESTIONS = 10;
 
 /**
  * 生成接句题。
- * poemId 传 'all' 时从全部诗里抽，最多 MAX_QUESTIONS 题；传具体 id 时只考这一首。
+ *
+ * 干扰项只从同一册的篇目里抽，跨年级混进来的句子一眼就能排除，题目会变水。
+ * poemId 找不到（比如换了年级，上次选的是另一册的诗）时退回本册全部。
  */
-export function generateReciteQuestions(poemId: string): ReciteQuestion[] {
-  const pool = allLines();
-  const targets = poemId === 'all' ? POEMS : POEMS.filter((p) => p.id === poemId);
+export function generateReciteQuestions({ grade, volume, poemId }: ReciteConfig): ReciteQuestion[] {
+  const semester = poemsFor(grade, volume);
+  if (semester.length === 0) return [];
+
+  const picked = semester.filter((p) => p.id === poemId);
+  const targets = picked.length > 0 ? picked : semester;
+  const isWhole = picked.length === 0 || poemId === 'all';
+
+  const pool = semester.flatMap((p) => p.lines);
   const built = targets.flatMap((poem) => questionsForPoem(poem, pool));
 
-  if (poemId === 'all') {
-    return shuffle(built).slice(0, MAX_QUESTIONS);
-  }
-  return shuffle(built);
+  return isWhole ? shuffle(built).slice(0, MAX_QUESTIONS) : shuffle(built);
 }

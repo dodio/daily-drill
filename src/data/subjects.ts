@@ -16,7 +16,7 @@ export const SUBJECTS: SubjectMeta[] = [
     name: '背诵',
     en: 'Recite',
     icon: '📜',
-    desc: '古诗接句，读熟记牢',
+    desc: '一、二年级古诗文接句',
     route: '/recite',
     ready: true,
   },

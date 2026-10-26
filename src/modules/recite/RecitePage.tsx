@@ -7,20 +7,20 @@ import { ResultCard } from '../../components/ResultCard.tsx';
 import { ReciteSetup } from './ReciteSetup.tsx';
 import { ReciteQuiz } from './ReciteQuiz.tsx';
 import { generateReciteQuestions } from './generator.ts';
-import type { ReciteQuestion } from './generator.ts';
+import type { ReciteConfig, ReciteQuestion } from './generator.ts';
 
 type Phase = 'setup' | 'quiz' | 'result';
 
 export function RecitePage() {
   const { record, today } = useDailyLog();
   const [phase, setPhase] = useState<Phase>('setup');
-  const [poemId, setPoemId] = useState('all');
+  const [config, setConfig] = useState<ReciteConfig | null>(null);
   const [questions, setQuestions] = useState<ReciteQuestion[]>([]);
   const [result, setResult] = useState<PracticeResult | null>(null);
 
-  const start = (id: string) => {
-    setPoemId(id);
-    setQuestions(generateReciteQuestions(id));
+  const start = (nextConfig: ReciteConfig) => {
+    setConfig(nextConfig);
+    setQuestions(generateReciteQuestions(nextConfig));
     setResult(null);
     setPhase('quiz');
   };
@@ -78,7 +78,10 @@ export function RecitePage() {
           correct={result.correct}
           durationMs={result.durationMs}
           wrongItems={result.wrongItems}
-          onRetry={() => start(poemId)}
+          onRetry={() => {
+            if (config) start(config);
+            else setPhase('setup');
+          }}
           onHome={() => navigate('/')}
         />
       )}

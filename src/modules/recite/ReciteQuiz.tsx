@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PracticeResult, WrongItem } from '../../types/index.ts';
-import { getPoem } from '../../data/poems.ts';
+import { getPoem, sourceLabel } from '../../data/poems.ts';
 import type { ReciteQuestion } from './generator.ts';
 
 interface Props {
@@ -99,7 +99,7 @@ export function ReciteQuiz({ questions, onFinish, onExit }: Props) {
         <div className="question">
           <div className="question__line">{current.prompt}</div>
           <div className="question__from">
-            {poem ? `《${poem.title}》 ${poem.dynasty}·${poem.author}` : current.poemTitle} · 下一句是？
+            {poem ? sourceLabel(poem) : current.poemTitle} · 下一句是？
           </div>
         </div>
       </div>
