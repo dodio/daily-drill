@@ -5,9 +5,17 @@ import { PALETTE } from './generator.ts';
 
 interface Props {
   puzzle: Puzzle;
-  onSolved: () => void;
+  /**
+   * 拼完那一刻上报。父级要在这里停表：玩家会在「拼好啦」上停一会儿，
+   * 那段时间不能算进本关用时。
+   */
+  onFinish: () => void;
+  /** 点「下一关」/「看结果」。推进关卡由父级做 */
+  onNext: () => void;
   /** 把这一关推回初始状态。父级会连计时一起归零，所以这里只负责发出请求 */
   onReset: () => void;
+  /** 最后一关：完成按钮写「看结果」而不是「下一关」 */
+  isLast: boolean;
 }
 
 interface DragState {
@@ -33,7 +41,23 @@ type Placed = Record<number, Cell>;
 /** 点一下的最大位移，超过就算拖拽 */
 const TAP_SLOP = 8;
 
-export function PuzzleGame({ puzzle, onSolved, onReset }: Props) {
+/**
+ * 拼满后的浮层。这里必须给一个明确的出口按钮：
+ * 早先是 900ms 后自动进下一关，孩子还没看清「拼好啦」画面就被换走了，
+ * 也不知道自己是怎么过去的。改成手点，节奏交回玩家。
+ */
+export function PuzzleDone({ isLast, onNext }: { isLast: boolean; onNext: () => void }) {
+  return (
+    <div className="pz-done">
+      <div className="pz-done__title">拼好啦！</div>
+      <button type="button" className="btn btn--primary pz-done__btn" onClick={onNext}>
+        {isLast ? '看结果' : '下一关'}
+      </button>
+    </div>
+  );
+}
+
+export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props) {
   const { cols, rows, region, pieces } = puzzle;
 
   const [placed, setPlaced] = useState<Placed>({});
@@ -213,26 +237,16 @@ export function PuzzleGame({ puzzle, onSolved, onReset }: Props) {
   const unplaced = pieces.filter((p) => placed[p.id] === undefined);
   const placedCount = pieces.length - unplaced.length;
 
-  // 全部放好 → 播完动画再上报。
-  // 用 ref 而不是 state 做「只上报一次」的闸门：如果把它放进依赖里，
-  // setDone 引发的那次重渲染会先执行 cleanup 把定时器清掉，回调永远等不到。
+  // 全部放好 → 亮出完成浮层并上报停表。
+  // 用 ref 而不是 state 做「只上报一次」的闸门：把它放进依赖里的话，
+  // setDone 引发的那次重渲染会先跑一遍 effect，容易变成重复上报。
   const solvedRef = useRef(false);
-  const aliveRef = useRef(true);
-  useEffect(
-    () => () => {
-      aliveRef.current = false;
-    },
-    [],
-  );
-
   useEffect(() => {
     if (solvedRef.current || placedCount !== pieces.length) return;
     solvedRef.current = true;
     setDone(true);
-    window.setTimeout(() => {
-      if (aliveRef.current) onSolved();
-    }, 900);
-  }, [placedCount, pieces.length, onSolved]);
+    onFinish();
+  }, [placedCount, pieces.length, onFinish]);
 
   const showHint = () => {
     const targets = pieces.filter((p) => placed[p.id] === undefined);
@@ -320,7 +334,7 @@ export function PuzzleGame({ puzzle, onSolved, onReset }: Props) {
             })}
         </div>
 
-        {done && <div className="pz-done">拼好啦！</div>}
+        {done && <PuzzleDone isLast={isLast} onNext={onNext} />}
       </div>
 
       <div className={`pz-tray${unplaced.length === 0 ? ' pz-tray--empty' : ''}`}>
@@ -369,21 +383,23 @@ export function PuzzleGame({ puzzle, onSolved, onReset }: Props) {
         <span className="pz-foot__count">
           {placedCount} / {pieces.length} 块
         </span>
-        <div className="pz-foot__btns">
-          {/* 没放过块的时候按了也没意义，直接禁掉，省得孩子空点 */}
-          <button
-            type="button"
-            className="pz-resetbtn"
-            onClick={onReset}
-            disabled={placedCount === 0 || done}
-            aria-label="重来这一关"
-          >
-            重来
-          </button>
-          <button type="button" className="pz-hintbtn" onClick={showHint} disabled={done}>
-            看一眼提示
-          </button>
-        </div>
+        {/* 拼完之后这两个按钮就点不动了，索性整个不渲染：留着只会招来空点 */}
+        {!done && (
+          <div className="pz-foot__btns">
+            <button
+              type="button"
+              className="pz-resetbtn"
+              onClick={onReset}
+              disabled={placedCount === 0}
+              aria-label="重来这一关"
+            >
+              重来
+            </button>
+            <button type="button" className="pz-hintbtn" onClick={showHint}>
+              看一眼提示
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

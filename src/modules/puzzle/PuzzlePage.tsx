@@ -123,21 +123,22 @@ export function PuzzlePage() {
     setPhase('play');
   };
 
-  const handleSolved = () => {
+  /** 拼完那一刻：记下本关用时并停表。无尽模式的加时也在这里到账 */
+  const handleFinish = () => {
     const stamp = Date.now();
-    const spent = stamp - levelStartRef.current;
-    const nextTimes = [...times, spent];
-    setTimes(nextTimes);
+    setTimes([...times, stamp - levelStartRef.current]);
+    // 在拼完那一刻补时间，而不是点按钮那一刻——否则玩家在浮层上犹豫几秒就白亏几秒
+    if (config.mode === 'endless') {
+      deadlineRef.current += timeBonusMs(endlessConfig(level));
+    }
+  };
 
+  /** 点「下一关 / 看结果」才推进：绝不自动跳，节奏交给玩家 */
+  const handleNext = () => {
     const isLast = config.mode === 'level' && level >= totalLevels;
     if (isLast) {
-      endSession('clear', nextTimes, stamp);
+      endSession('clear', times, Date.now());
       return;
-    }
-
-    if (config.mode === 'endless') {
-      // 按「刚拼完这一关」的盘子规模补时间：越往后盘子越大，补得也越多
-      deadlineRef.current += timeBonusMs(endlessConfig(level));
     }
 
     const nextLevel = level + 1;
@@ -145,7 +146,8 @@ export function PuzzlePage() {
       config.mode === 'level' ? TIERS[config.tier][nextLevel - 1] : endlessConfig(nextLevel);
     setLevel(nextLevel);
     setPuzzle(generatePuzzle(nextLevel, nextConfig));
-    levelStartRef.current = stamp;
+    // 下一关从「点下按钮」起算，浮层上停留的那段不算
+    levelStartRef.current = Date.now();
   };
 
   /**
@@ -213,6 +215,7 @@ export function PuzzlePage() {
 
   const remaining = deadlineRef.current - now;
   const urgent = config.mode === 'endless' && remaining < 20_000;
+  const isLastLevel = config.mode === 'level' && level >= totalLevels;
   const barPct =
     config.mode === 'endless'
       ? Math.min(100, Math.max(0, (remaining / ENDLESS_INITIAL_MS) * 100))
@@ -252,8 +255,10 @@ export function PuzzlePage() {
         <PuzzleGame
           key={`${config.mode}-${config.tier}-${level}-${puzzle.level}-${resetNonce}`}
           puzzle={puzzle}
-          onSolved={handleSolved}
+          onFinish={handleFinish}
+          onNext={handleNext}
           onReset={resetLevel}
+          isLast={isLastLevel}
         />
       )}
     </div>

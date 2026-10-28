@@ -959,11 +959,24 @@ input {
   box-shadow: none;
 }
 
+/*
+   碎块是「绝对定位的包围盒 div + 里面的 i 画像素」。
+   包围盒里没像素的部位是透明的，但 div 本身照样吃指针事件，
+   于是后放的块会用它的空洞盖住先放的块，导致下面的块选不中也拖不动。
+   所以包围盒整块让开事件，只把接收权交回给真实的像素 i。
+   副作用是「点在自己已放块的空洞里」会被当成点空格子，这正是想要的。
+*/
 .pz-piece {
   position: absolute;
   filter: drop-shadow(0 2px 6px rgba(92, 64, 40, 0.16));
   touch-action: none;
   transition: left 0.09s ease, top 0.09s ease;
+  pointer-events: none;
+}
+
+.pz-piece i {
+  pointer-events: auto;
+  cursor: grab;
 }
 
 .pz-piece i,
@@ -1050,16 +1063,28 @@ input {
 .pz-done {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 26px;
-  font-weight: 900;
-  color: var(--primary-deep);
-  letter-spacing: 0.04em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
   /* 跟着主题走：暗色下白底会把整块屏幕闪一下 */
   background: color-mix(in srgb, var(--bg) 76%, transparent);
   border-radius: var(--radius);
   animation: pz-pop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pz-done__title {
+  font-size: 26px;
+  font-weight: 900;
+  color: var(--primary-deep);
+  letter-spacing: 0.04em;
+}
+
+.pz-done__btn {
+  min-width: 148px;
+  font-size: 16px;
+  box-shadow: 0 6px 18px rgba(255, 122, 69, 0.32);
 }
 
 @keyframes pz-pop {
