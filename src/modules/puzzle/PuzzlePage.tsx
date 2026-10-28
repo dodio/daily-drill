@@ -51,8 +51,6 @@ export function PuzzlePage() {
   const [now, setNow] = useState(() => Date.now());
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [best, setBest] = useState(0);
-  /** 重来一次就 +1，用来把 PuzzleGame 整个换掉——比在组件里手动清五六个 state 干净 */
-  const [resetNonce, setResetNonce] = useState(0);
 
   const deadlineRef = useRef(0);
   const levelStartRef = useRef(0);
@@ -150,18 +148,6 @@ export function PuzzlePage() {
     levelStartRef.current = Date.now();
   };
 
-  /**
-   * 重来这一关：把棋盘清空，并把本级计时拨回零。
-   * puzzle 对象不动，所以还是同一张盘子——「重来」是重新尝试，不是换题。
-   * 无尽模式不退还已经流走的时间，否则反复重来就能无限刷时长。
-   */
-  const resetLevel = () => {
-    const stamp = Date.now();
-    levelStartRef.current = stamp;
-    setNow(stamp);
-    setResetNonce((n) => n + 1);
-  };
-
   // 走秒。无尽模式顺便在这里判超时，不另外挂一个 setTimeout
   useEffect(() => {
     if (phase !== 'play') return undefined;
@@ -253,11 +239,10 @@ export function PuzzlePage() {
 
       {puzzle && (
         <PuzzleGame
-          key={`${config.mode}-${config.tier}-${level}-${puzzle.level}-${resetNonce}`}
+          key={`${config.mode}-${config.tier}-${level}-${puzzle.level}`}
           puzzle={puzzle}
           onFinish={handleFinish}
           onNext={handleNext}
-          onReset={resetLevel}
           isLast={isLastLevel}
         />
       )}

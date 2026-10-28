@@ -13,8 +13,6 @@ interface Props {
   onFinish: () => void;
   /** 点「下一关」/「看结果」。推进关卡由父级做 */
   onNext: () => void;
-  /** 把这一关推回初始状态。父级会连计时一起归零，所以这里只负责发出请求 */
-  onReset: () => void;
   /** 最后一关：完成按钮写「看结果」而不是「下一关」 */
   isLast: boolean;
 }
@@ -35,6 +33,8 @@ interface DragState {
   adjusted: boolean;
   /** 从棋盘上拿起来时，原来的位置。从托盘拿起则为 null */
   origin: Cell | null;
+  /** 指针悬在待选区上方：松手就把这块放回去 */
+  overTray: boolean;
 }
 
 type Placed = Record<number, Cell>;
@@ -58,7 +58,7 @@ export function PuzzleDone({ isLast, onNext }: { isLast: boolean; onNext: () => 
   );
 }
 
-export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props) {
+export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   const { cols, rows, region, pieces } = puzzle;
 
   const [placed, setPlaced] = useState<Placed>({});
@@ -68,6 +68,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
   const [done, setDone] = useState(false);
 
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const trayRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
 
@@ -106,11 +107,12 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
 
   /**
    * 把指针位置换算成落点。规则本身在 anchor.ts 里，这里只接上「能不能放」。
-   * prev 传上一帧吸住的锚点，用于「别一抖就松手」。
+   * prev 传上一帧吸住的锚点，用于「别一抖就松手」；
+   * blocked 传从棋盘拿起时的原位，那次拖动里不许再被吸回去。
    */
   const resolveAnchor = useCallback(
-    (piece: PuzzlePiece, raw: Cell, prev: Cell | null) =>
-      pickAnchor(raw, prev, (anchor) => canPlace(piece, anchor)),
+    (piece: PuzzlePiece, raw: Cell, prev: Cell | null, blocked: Cell | null) =>
+      pickAnchor(raw, prev, (anchor) => canPlace(piece, anchor), blocked),
     [canPlace],
   );
 
@@ -119,6 +121,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
     piece: PuzzlePiece,
     origin: Cell | null,
   ) => {
+    // 拼完之后棋盘被浮层盖着，不该还能拖
+    if (done) return;
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     const unit = rect.width / piece.w;
@@ -139,6 +143,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
       anchor: null,
       adjusted: false,
       origin,
+      overTray: false,
     });
   };
 
@@ -147,6 +152,13 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
   // 拖拽的 move/up 挂到 window 上：手指移出棋盘、甚至移出浏览器窗口也不能丢事件
   useEffect(() => {
     if (!dragging) return undefined;
+
+    /** 指针是否落在待选区上方 */
+    const inTray = (x: number, y: number) => {
+      const tray = trayRef.current?.getBoundingClientRect();
+      if (!tray) return false;
+      return x >= tray.left && x <= tray.right && y >= tray.top && y <= tray.bottom;
+    };
 
     const move = (event: PointerEvent) => {
       const state = dragRef.current;
@@ -166,8 +178,13 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
         event.clientY < rect.top - cell ||
         event.clientY > rect.bottom + cell;
 
+      // 指针挪到待选区上方：这块可以从棋盘撤回去了
+      const overTray = state.origin !== null && inTray(event.clientX, event.clientY);
+
+      // blocked 传原位：捡起来的那一格不许再吸回去，块先跟着手走
       // prev 传上一帧吸住的位置，吸附才有粘性
-      const hit = outside ? null : resolveAnchor(piece, raw, state.anchor);
+      const hit =
+        outside || overTray ? null : resolveAnchor(piece, raw, state.anchor, state.origin);
       setDrag({
         ...state,
         px: event.clientX,
@@ -175,6 +192,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
         raw: outside ? null : raw,
         anchor: hit ? hit.anchor : null,
         adjusted: hit ? hit.adjusted : false,
+        overTray,
       });
     };
 
@@ -184,11 +202,41 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
       const moved =
         Math.hypot(event.clientX - state.startX, event.clientY - state.startY) > TAP_SLOP;
 
+      /*
+        拖回待选区：把它从棋盘上撤下来，重新变成「没放」的块。
+        以最后一帧的 overTray 为主，pointerup 再用真实坐标兜一次底——
+        甩得快的时候最后一帧可能还差一点点没进托盘，光看 state 会漏判。
+        pointercancel 不带可信坐标（常常是 0,0），所以只信 state。
+      */
+      const toTray =
+        state.origin !== null &&
+        (state.overTray || (event.type === 'pointerup' && inTray(event.clientX, event.clientY)));
+
+      if (moved && toTray) {
+        setPlaced((prev) => {
+          if (prev[state.pieceId] === undefined) return prev;
+          const next = { ...prev };
+          delete next[state.pieceId];
+          return next;
+        });
+        setDrag(null);
+        return;
+      }
+
+      /*
+        没挪动（或只挪了几个像素）：当成点击。
+        托盘里的块进入选中态，接下来点棋盘就能放；
+        棋盘上的块本来就摆在原处，点了不该有任何改动——
+        尤其不能因为吸附算出了相邻格就把它挪走一格。
+      */
+      if (!moved) {
+        if (state.origin === null) setSelected(state.pieceId);
+        setDrag(null);
+        return;
+      }
+
       if (state.anchor) {
         setPlaced((prev) => ({ ...prev, [state.pieceId]: state.anchor as Cell }));
-      } else if (!moved && state.origin === null) {
-        // 只是点了一下，当成选中：接下来点棋盘就能放
-        setSelected(state.pieceId);
       }
       // 放不下就留在原处（从棋盘拿起来的那块，placed 里本来就还在）
       setDrag(null);
@@ -216,8 +264,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
     const gx = Math.floor((event.clientX - rect.left) / cell);
     const gy = Math.floor((event.clientY - rect.top) / cell);
     const piece = pieces[selected];
-    // 点格子落子没有「上一帧吸住的点」，所以不带粘性
-    const hit = resolveAnchor(piece, { x: gx, y: gy }, null);
+    // 点格子落子没有「上一帧吸住的点」，也没有被锁住的原位
+    const hit = resolveAnchor(piece, { x: gx, y: gy }, null, null);
     if (hit) {
       setPlaced((prev) => ({ ...prev, [selected]: hit.anchor }));
       setSelected(null);
@@ -237,6 +285,21 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
     setDone(true);
     onFinish();
   }, [placedCount, pieces.length, onFinish]);
+
+  /**
+   * 重来：把所有碎块收回待选区，棋盘清空，还是同一张盘子。
+   * 只清这一局自己的摆放状态——计时器在父级手里，这里一个字都不碰，
+   * 所以「重来」是真的多花了时间，而不是把表拨回去。
+   */
+  const resetBoard = () => {
+    setPlaced({});
+    setDrag(null);
+    setSelected(null);
+    setHint(null);
+    setDone(false);
+    // 拼满后会锁住上报闸门，清空时必须一并打开，否则重来拼完不会再有反应
+    solvedRef.current = false;
+  };
 
   const showHint = () => {
     const targets = pieces.filter((p) => placed[p.id] === undefined);
@@ -260,7 +323,17 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
   });
 
   const draggedPiece = drag ? pieces[drag.pieceId] : null;
-  const dropAnchor = drag ? (drag.anchor ?? drag.raw) : null;
+  /*
+    块还压在原位（那一格在本次拖动里被锁住）时不画落点预览。
+    否则红色框会罩在自己身上，看着像「这里放不下」，其实只是还没挪开。
+  */
+  const stuckAtOrigin = !!(
+    drag?.origin &&
+    drag.raw &&
+    drag.raw.x === drag.origin.x &&
+    drag.raw.y === drag.origin.y
+  );
+  const dropAnchor = drag && !stuckAtOrigin ? (drag.anchor ?? drag.raw) : null;
   const boardRect = boardRef.current?.getBoundingClientRect();
   const boardCell = boardRect ? boardRect.width / cols : 40;
 
@@ -320,6 +393,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
           {/* 拖拽时的落点预览：绿=能放，黄=自动纠正了一格，红=放不下 */}
           {drag &&
             draggedPiece &&
+            !drag.overTray &&
             dropAnchor &&
             draggedPiece.cells.map((c, i) => {
               const x = dropAnchor.x + c.x;
@@ -333,7 +407,12 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
         {done && <PuzzleDone isLast={isLast} onNext={onNext} />}
       </div>
 
-      <div className={`pz-tray${unplaced.length === 0 ? ' pz-tray--empty' : ''}`}>
+      <div
+        ref={trayRef}
+        className={`pz-tray${unplaced.length === 0 ? ' pz-tray--empty' : ''}${
+          drag?.overTray ? ' pz-tray--over' : ''
+        }`}
+      >
         {unplaced.map((piece) => (
           <div
             key={piece.id}
@@ -351,6 +430,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
           </div>
         ))}
         {unplaced.length === 0 && <span className="pz-tray__done">全部放完了</span>}
+        {drag?.overTray && <span className="pz-tray__hint">松手，这块就放回待选区</span>}
       </div>
 
       {/* 拖动中的块跟着手指走；已经吸附到合法位置时直接贴到棋盘上，手感更实 */}
@@ -385,7 +465,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
             <button
               type="button"
               className="pz-resetbtn"
-              onClick={onReset}
+              onClick={resetBoard}
               disabled={placedCount === 0}
               aria-label="重来这一关"
             >
