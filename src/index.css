@@ -979,6 +979,11 @@ input {
   cursor: grab;
 }
 
+/* 拿着的那块留在 DOM 里但看不见：删节点会触发触摸端的 pointercancel */
+.pz-piece--carried {
+  visibility: hidden;
+}
+
 .pz-piece i,
 .pz-slot i,
 .pz-ghost i {
@@ -1014,13 +1019,21 @@ input {
   pointer-events: none;
   opacity: 0.94;
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.22));
+  /*
+    自由跟随和对齐格子用的是两套定位基准，切换时最多差半格。
+    不加过渡的话这一下是瞬跳，看着就像块被甩掉了；
+    过渡压到 60ms，滑过去，手感才连得上。
+  */
+  transition: left 0.06s ease-out, top 0.06s ease-out;
 }
 
-/* 已经吸到合法位置：去掉「飘起来」的阴影，看着就是落到位了 */
+/*
+  吸附只表达为「贴到格子上 + 预览变绿」。
+  早先这里还把阴影撤掉（filter: none），视觉上更像块脱手掉下去，
+  一并去掉——吸附不该让块看起来失去了重量。
+*/
 .pz-ghost--snap {
   opacity: 1;
-  filter: none;
-  transition: left 0.05s linear, top 0.05s linear;
 }
 
 .pz-drop {

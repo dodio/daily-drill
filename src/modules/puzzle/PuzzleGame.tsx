@@ -2,6 +2,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Cell, Puzzle, PuzzlePiece } from './generator.ts';
 import { PALETTE } from './generator.ts';
+import { pickAnchor } from './anchor.ts';
 
 interface Props {
   puzzle: Puzzle;
@@ -104,25 +105,12 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
   );
 
   /**
-   * 把指针位置换算成锚点。
-   *
-   * 差一格放不进去是这类游戏最容易炸的挫败点（手指比格子粗），
-   * 所以错位时在周围一格内找候选；但只在候选唯一时才自动吸过去——
-   * 有多个候选说明位置本身有歧义，硬吸反而会吸到玩家不想要的地方。
+   * 把指针位置换算成落点。规则本身在 anchor.ts 里，这里只接上「能不能放」。
+   * prev 传上一帧吸住的锚点，用于「别一抖就松手」。
    */
   const resolveAnchor = useCallback(
-    (piece: PuzzlePiece, raw: Cell): { anchor: Cell; adjusted: boolean } | null => {
-      if (canPlace(piece, raw)) return { anchor: raw, adjusted: false };
-      const found: Cell[] = [];
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          if (dx === 0 && dy === 0) continue;
-          const anchor = { x: raw.x + dx, y: raw.y + dy };
-          if (canPlace(piece, anchor)) found.push(anchor);
-        }
-      }
-      return found.length === 1 ? { anchor: found[0], adjusted: true } : null;
-    },
+    (piece: PuzzlePiece, raw: Cell, prev: Cell | null) =>
+      pickAnchor(raw, prev, (anchor) => canPlace(piece, anchor)),
     [canPlace],
   );
 
@@ -178,7 +166,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
         event.clientY < rect.top - cell ||
         event.clientY > rect.bottom + cell;
 
-      const hit = outside ? null : resolveAnchor(piece, raw);
+      // prev 传上一帧吸住的位置，吸附才有粘性
+      const hit = outside ? null : resolveAnchor(piece, raw, state.anchor);
       setDrag({
         ...state,
         px: event.clientX,
@@ -227,7 +216,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
     const gx = Math.floor((event.clientX - rect.left) / cell);
     const gy = Math.floor((event.clientY - rect.top) / cell);
     const piece = pieces[selected];
-    const hit = resolveAnchor(piece, { x: gx, y: gy });
+    // 点格子落子没有「上一帧吸住的点」，所以不带粘性
+    const hit = resolveAnchor(piece, { x: gx, y: gy }, null);
     if (hit) {
       setPlaced((prev) => ({ ...prev, [selected]: hit.anchor }));
       setSelected(null);
@@ -300,11 +290,17 @@ export function PuzzleGame({ puzzle, onFinish, onNext, onReset, isLast }: Props)
           {/* 已放好的块 */}
           {pieces.map((piece) => {
             const anchor = placed[piece.id];
-            if (!anchor || piece.id === dragPieceId) return null;
+            if (!anchor) return null;
+            /*
+              正被拿着的那块不卸载、只藏起来。
+              DOM 节点一删，触摸端会因为隐式指针捕获丢失而直接发 pointercancel，
+              拖动就断在那里——这是「拖到一半突然掉了」最隐蔽的来源。
+            */
+            const carried = piece.id === dragPieceId;
             return (
               <div
                 key={`p${piece.id}`}
-                className="pz-piece"
+                className={`pz-piece${carried ? ' pz-piece--carried' : ''}`}
                 style={{
                   left: `${(anchor.x / cols) * 100}%`,
                   top: `${(anchor.y / rows) * 100}%`,
