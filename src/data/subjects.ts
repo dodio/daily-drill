@@ -10,6 +10,8 @@ export const SUBJECTS: SubjectMeta[] = [
     desc: '加减乘除，一天一组',
     route: '/math',
     ready: true,
+    group: 'study',
+    unit: '题',
   },
   {
     id: 'recite',
@@ -19,6 +21,8 @@ export const SUBJECTS: SubjectMeta[] = [
     desc: '一、二年级古诗文接句',
     route: '/recite',
     ready: true,
+    group: 'study',
+    unit: '题',
   },
   {
     id: 'words',
@@ -28,6 +32,19 @@ export const SUBJECTS: SubjectMeta[] = [
     desc: '英语单词，看词选义',
     route: '/words',
     ready: false,
+    group: 'study',
+    unit: '题',
+  },
+  {
+    id: 'puzzle',
+    name: '像素拼接',
+    en: 'Pixel Fit',
+    icon: '🧩',
+    desc: '把碎块拼满整个盘子',
+    route: '/puzzle',
+    ready: true,
+    group: 'puzzle',
+    unit: '关',
   },
 ];
 

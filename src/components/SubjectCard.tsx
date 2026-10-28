@@ -27,7 +27,11 @@ export function SubjectCard({ subject, todayCount, onSelect }: Props) {
         </span>
         <span className="subject__desc">{subject.desc}</span>
         {todayCount > 0 && (
-          <span className="subject__meta">今天已练 {todayCount} 题 ✓</span>
+          <span className="subject__meta">
+            {subject.unit === '关'
+              ? `今天玩了 ${todayCount} 关 ✓`
+              : `今天已练 ${todayCount} 题 ✓`}
+          </span>
         )}
       </span>
       <span className="subject__arrow" aria-hidden="true">

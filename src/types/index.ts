@@ -1,5 +1,5 @@
 /** 科目标识。新增科目时在此扩展，并在 src/modules 下建立对应目录。 */
-export type SubjectId = 'math' | 'recite' | 'words';
+export type SubjectId = 'math' | 'recite' | 'words' | 'puzzle';
 
 /** 单道错题的快照，用于复盘。 */
 export interface WrongItem {
@@ -20,6 +20,11 @@ export interface SessionRecord {
   correct: number;
   /** 练法。旧记录没有这个字段，按「按题数」处理 */
   mode?: 'count' | 'timed';
+  /**
+   * 练习还是游戏。旧记录没有这个字段，按练习处理。
+   * 分这个是因为拼图不是「做题」，混进题数和正确率里会让家长看到的学习量失真。
+   */
+  kind?: 'quiz' | 'game';
   wrongItems: WrongItem[];
 }
 
@@ -46,4 +51,8 @@ export interface SubjectMeta {
   desc: string;
   route: string;
   ready: boolean;
+  /** 首页分组：学习科目 / 益智游戏 */
+  group: 'study' | 'puzzle';
+  /** 计量单位，决定首页是「今天已练 N 题」还是「今天玩了 N 关」 */
+  unit: '题' | '关';
 }

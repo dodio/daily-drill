@@ -3,6 +3,7 @@ import { Home } from './pages/Home.tsx';
 import { NotFound } from './pages/NotFound.tsx';
 import { MathPage } from './modules/math/MathPage.tsx';
 import { RecitePage } from './modules/recite/RecitePage.tsx';
+import { PuzzlePage } from './modules/puzzle/PuzzlePage.tsx';
 
 export default function App() {
   const route = useRoute();
@@ -14,6 +15,8 @@ export default function App() {
       return <MathPage />;
     case '/recite':
       return <RecitePage />;
+    case '/puzzle':
+      return <PuzzlePage />;
     default:
       return <NotFound />;
   }

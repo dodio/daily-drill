@@ -3,19 +3,27 @@ import { shiftDay } from './date.ts';
 
 export interface TodaySummary {
   sessions: number;
+  /** 做题总量，不含益智游戏 */
   total: number;
   correct: number;
   accuracy: number;
+  /** 益智游戏完成的关数。和题数分开，免得拼图把「学习量」和「正确率」算歪 */
+  games: number;
 }
 
 function summarize(list: SessionRecord[]): TodaySummary {
-  const total = list.reduce((acc, s) => acc + s.total, 0);
-  const correct = list.reduce((acc, s) => acc + s.correct, 0);
+  const quiz = list.filter((s) => s.kind !== 'game');
+  const total = quiz.reduce((acc, s) => acc + s.total, 0);
+  const correct = quiz.reduce((acc, s) => acc + s.correct, 0);
+  const games = list
+    .filter((s) => s.kind === 'game')
+    .reduce((acc, s) => acc + s.total, 0);
   return {
     sessions: list.length,
     total,
     correct,
     accuracy: total === 0 ? 0 : correct / total,
+    games,
   };
 }
 
@@ -46,13 +54,13 @@ export function calcStreak(sessions: SessionRecord[], today: string): number {
   return streak;
 }
 
-/** 最近 n 天的练习量，用于首页小趋势条。 */
+/** 最近 n 天的练习量，用于首页小趋势条。游戏不算进「题数」，画的才是学习量。 */
 export function recentDays(sessions: SessionRecord[], today: string, n = 7) {
   const out: { date: string; total: number }[] = [];
   for (let i = n - 1; i >= 0; i -= 1) {
     const date = shiftDay(today, -i);
     const total = sessions
-      .filter((s) => s.date === date)
+      .filter((s) => s.date === date && s.kind !== 'game')
       .reduce((acc, s) => acc + s.total, 0);
     out.push({ date, total });
   }

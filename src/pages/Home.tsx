@@ -15,6 +15,19 @@ export function Home() {
   const days = recentDays(sessions, today, 7);
   const peak = Math.max(1, ...days.map((d) => d.total));
 
+  const study = SUBJECTS.filter((s) => s.group === 'study');
+  const games = SUBJECTS.filter((s) => s.group === 'puzzle');
+
+  // 只玩了拼图的那天，大数字改成关卡数，否则会显示一个「0 题已完成」看着像没练
+  const bigNum = summary.total > 0 ? summary.total : summary.games;
+  const bigUnit = summary.total > 0 ? '题已完成' : '关已拼成';
+  const hintParts = [
+    summary.total > 0
+      ? `答对 ${summary.correct} 题 · 正确率 ${Math.round(summary.accuracy * 100)}%`
+      : '',
+    summary.games > 0 ? `益智 ${summary.games} 关` : '',
+  ].filter(Boolean);
+
   useEffect(() => {
     if (!toast) return undefined;
     const timer = window.setTimeout(() => setToast(''), 1600);
@@ -23,7 +36,7 @@ export function Home() {
 
   const handleSelect = (subject: SubjectMeta) => {
     if (!subject.ready) {
-      setToast(`${subject.name}模块开发中，先练口算和背诵`);
+      setToast(`${subject.name}模块开发中，先去练口算、背诵或拼图`);
       return;
     }
     navigate(subject.route);
@@ -48,14 +61,14 @@ export function Home() {
         </div>
 
         <div className="today__big">
-          <span className="today__num">{summary.total}</span>
-          <span className="today__unit">题已完成</span>
+          <span className="today__num">{bigNum}</span>
+          <span className="today__unit">{bigUnit}</span>
         </div>
 
         <p className="today__hint">
-          {summary.total === 0
+          {hintParts.length === 0
             ? '还没开始。练 10 道口算，两分钟就够。'
-            : `答对 ${summary.correct} 题 · 正确率 ${Math.round(summary.accuracy * 100)}%`}
+            : hintParts.join(' · ')}
         </p>
 
         <div className="trend">
@@ -74,15 +87,35 @@ export function Home() {
 
       <h2 className="section-title">今天练什么</h2>
       <div className="subject-list">
-        {SUBJECTS.map((subject) => (
+        {study.map((subject) => (
           <SubjectCard
             key={subject.id}
             subject={subject}
-            todayCount={subjectTodaySummary(sessions, today, subject.id).total}
+            todayCount={
+              subject.unit === '关'
+                ? subjectTodaySummary(sessions, today, subject.id).games
+                : subjectTodaySummary(sessions, today, subject.id).total
+            }
             onSelect={handleSelect}
           />
         ))}
       </div>
+
+      {games.length > 0 && (
+        <>
+          <h2 className="section-title">益智游戏</h2>
+          <div className="subject-list">
+            {games.map((subject) => (
+              <SubjectCard
+                key={subject.id}
+                subject={subject}
+                todayCount={subjectTodaySummary(sessions, today, subject.id).games}
+                onSelect={handleSelect}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       <p className="footnote">数据只保存在这台设备 · 每日一练 v0.1</p>
 
