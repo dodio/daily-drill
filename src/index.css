@@ -897,33 +897,66 @@ input {
 .pz {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
-/* 玩的时候整屏都让给棋盘，别让底部安全区把托盘顶上来 */
+/*
+  玩的时候整屏就这一屏，竖屏横屏都一样。
+
+  以前只有横屏锁一屏，竖屏让内容自然撑开：竖屏高度富余时看不出问题，
+  一换到横屏就顶出视口。现在两头都锁，棋盘的尺寸才有确定的「剩余高度」可算
+  ——棋盘大小 = 可用空间 ÷ 最大盘子边长，这条规则要有个定值可依。
+
+  用 fixed + inset:0 而不是 height:100dvh：dvh 不被支持时高度会塌成 auto，
+  棋盘连托盘一起溢出，退回到原来的毛病。inset:0 不依赖任何新单位。
+  左右 margin:auto 配合 max-width 居中，不能用 transform 居中——
+  拖动中的块是 position:fixed、按视口坐标定位，祖先一旦有 transform 就会跑偏。
+*/
 .pz-app {
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  position: fixed;
+  inset: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  /* 宁可棋盘小一点，也不要出现滚动条 */
+  overflow: hidden;
+  padding: 10px 14px max(10px, env(safe-area-inset-bottom));
+}
+
+.pz-app .quiz-head {
+  flex: none;
+  margin-bottom: 6px;
 }
 
 .pz-stage {
   position: relative;
   display: flex;
+  align-items: center;
   justify-content: center;
+  flex: 1;
+  min-height: 0;
 }
 
 /*
-   棋盘用 CSS Grid 铺格子，块用百分比定位。
+   棋盘是 CSS Grid 铺格子，块用百分比定位。
+   宽高由 JS 按「格宽 × 格数」写成内联像素值——见 PuzzleGame 里的 cell：
+   格宽只跟可用空间和 MAX_GRID 有关，跟本关有多少格无关，
+   所以 4×4 和 6×6 的格子一样大，小盘子只是整体小一圈。
+
    不加 gap / padding：只要不是「board 宽度除以列数」的整数倍，
    块的百分比位置就会和下面的格子错开半格，看起来像贴不上去。
    格子之间的缝用 inset 阴影画，不影响布局尺寸。
+
+   max-width 必须留给 JS 算，这里一个字都不能写死，
+   否则内联宽度会被 max-width 截断，百分比定位全部错位。
 */
 .pz-board {
   position: relative;
-  width: 100%;
-  max-width: 420px;
+  flex: none;
   display: grid;
   grid-template-columns: repeat(var(--cols), 1fr);
   grid-template-rows: repeat(var(--rows), 1fr);
-  aspect-ratio: var(--cols) / var(--rows);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -1004,6 +1037,16 @@ input {
 
 .pz-slot:active {
   transform: scale(0.94);
+}
+
+/*
+  已经拼到棋盘上的块：留空位，不占指针。
+  用 visibility 而不是 display:none / 不渲染——它必须继续撑着托盘的高度，
+  否则每放一块托盘就矮一行，棋盘跟着长一圈，整局都在抖。
+*/
+.pz-slot--gone {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* 点选后等第二下：给个明显的圈 */
@@ -1109,10 +1152,13 @@ input {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
+  align-content: center;
+  /* 高度完全由里面的块决定，一块都不许挤 → 放块时棋盘才不会跟着缩 */
+  flex: none;
   gap: 14px;
-  margin-top: 16px;
-  padding: 14px 12px;
-  min-height: 72px;
+  margin-top: 12px;
+  padding: 12px;
+  min-height: 44px;
   border-radius: var(--radius);
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1150,18 +1196,28 @@ input {
   border-color: transparent;
 }
 
+/* 全部放完的提示居中浮在托盘上：托盘里还留着那些空位，不能靠它们排版 */
 .pz-tray__done {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--success-soft);
   font-size: 13px;
   font-weight: 700;
   color: var(--success);
+  pointer-events: none;
 }
 
 .pz-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex: none;
   gap: 12px;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .pz-foot__count {
@@ -1304,79 +1360,32 @@ input {
   color: var(--ink);
 }
 
-/* ---------- 横屏适配：一屏装得下 ---------- */
+/* ---------- 宽屏 / 矮横屏微调 ---------- */
 
 /*
-  横屏的稀缺资源是高度，不是宽度。
+  整页锁一屏的规则放在上面（竖屏横屏通用）。这里只放宽屏宽和四周留白。
 
-  竖屏下棋盘由宽度决定（width:100%、max-width:420）没问题，因为竖屏高度富余。
-  横屏平板恰恰相反：宽度绰绰有余，棋盘却仍按宽度撑到 420 高，
-  加上头部、托盘、页脚就顶出视口，托盘和「重来/提示」被切掉——这就是
-  「游戏无法完整显示」。
-
-  改法是把整页锁成一屏高，棋盘改由「剩余高度」决定尺寸：
-  托盘占多少高度，棋盘就自动让出多少。托盘换到两行时棋盘自己小一圈，
-  不需要写死任何预留值。
+  宽屏放宽到 900 是给托盘用的：碎片多的关卡托盘要横着排开，
+  只给 560 会挤成三四行，把棋盘的高度全吃掉。
 */
 @media (orientation: landscape) {
-  /*
-    用 fixed + inset:0 锁一屏，而不是 height:100dvh。
-    dvh 一旦不被支持就整个高度塌成 auto，棋盘会连同托盘一起溢出——
-    退化成「还是看不全」。inset:0 不依赖任何新单位。
-    左右 margin:auto 配合 max-width 让宽屏居中（不能用 transform 居中：
-    拖动中的块是 position:fixed、按视口坐标定位，祖先一旦有 transform 就会跑偏）。
-  */
   .pz-app {
-    position: fixed;
-    inset: 0;
-    margin: 0 auto;
     max-width: 900px;
     padding: 10px max(16px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
       max(16px, env(safe-area-inset-left));
-    display: flex;
-    flex-direction: column;
-    /* 锁死一屏，宁可棋盘小一点也不要出现滚动条 */
-    overflow: hidden;
   }
 
   .pz-app .quiz-head {
-    flex: none;
     margin-bottom: 8px;
   }
 
-  .pz-app .pz {
-    flex: 1;
-    min-height: 0;
-  }
-
-  .pz-app .pz-stage {
-    flex: 1;
-    min-height: 0;
-  }
-
-  /*
-    height 定死、width:auto、比例来自 --cols / --rows：
-    宽度由高度推出来，棋盘永远是完整的一块，不会被裁。
-    flex:none 是必须的——否则 flex 会按内容（空的 grid）把宽度压成 0。
-    min(100%, 620px) 给大屏封顶，免得 1920×1080 上棋盘大到一屏放不下几块。
-  */
-  .pz-app .pz-board {
-    flex: none;
-    width: auto;
-    height: min(100%, 620px);
-    max-width: 100%;
-  }
-
   .pz-app .pz-tray {
-    flex: none;
     margin-top: 8px;
     padding: 8px 10px;
-    min-height: 44px;
     gap: 10px;
   }
 
   .pz-app .pz-foot {
-    flex: none;
     margin-top: 6px;
   }
 }

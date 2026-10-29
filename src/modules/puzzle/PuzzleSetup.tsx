@@ -3,6 +3,8 @@ import { readPref, writePref } from '../../lib/prefs.ts';
 import type { Tier } from './generator.ts';
 import {
   ENDLESS_INITIAL_MS,
+  ENDLESS_TIERS,
+  TIERS,
   TIER_LABELS,
   endlessConfig,
   timeBonusMs,
@@ -17,8 +19,8 @@ export interface PuzzleStartConfig {
 
 interface Props {
   onStart: (config: PuzzleStartConfig) => void;
-  /** 无尽模式的历史最好成绩（拼成几关） */
-  best: number;
+  /** 无尽模式的历史最好成绩，按难度分开记 */
+  bestByTier: Record<Tier, number>;
 }
 
 const TIERS_ORDER: Tier[] = ['easy', 'normal', 'hard'];
@@ -32,7 +34,7 @@ function fmtSec(ms: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function PuzzleSetup({ onStart, best }: Props) {
+export function PuzzleSetup({ onStart, bestByTier }: Props) {
   // 只读一次本地偏好，之后以 state 为准
   const [snap] = useState<Record<string, unknown>>(() => {
     const raw = readPref('puzzle');
@@ -48,8 +50,11 @@ export function PuzzleSetup({ onStart, best }: Props) {
     writePref('puzzle', { mode, tier });
   }, [mode, tier]);
 
-  // 无尽第一关的加时，用来说明「拼完能补多少」
-  const firstBonus = fmtSec(timeBonusMs(endlessConfig(1)));
+  // 无尽第一关的加时，用来说明「拼完能补多少」。越往后补得越少，所以只给首关的数
+  const firstBonus = fmtSec(timeBonusMs(endlessConfig(tier, 1), 1));
+  const et = ENDLESS_TIERS[tier];
+  // 成绩按难度分开看：三档盘子不一样大小，混在一起没有可比性
+  const best = bestByTier[tier] ?? 0;
 
   return (
     <>
@@ -70,39 +75,50 @@ export function PuzzleSetup({ onStart, best }: Props) {
           </div>
         </div>
 
-        {mode === 'level' ? (
-          <div className="field">
-            <div className="field__label">
-              选难度 <span className="field__label-hint">各 3 关</span>
-            </div>
-            <div className="pills">
-              {TIERS_ORDER.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  className={`pill${tier === t ? ' pill--on' : ''}`}
-                  onClick={() => setTier(t)}
-                >
-                  {TIER_LABELS[t]}
-                </button>
-              ))}
-            </div>
-            <p className="field__hint">
-              {tier === 'easy' && '全是方形盘子，4×4 起步，块少而大'}
-              {tier === 'normal' && '盘子开始缺角，5×5 到 6×6'}
-              {tier === 'hard' && '挖角更多、块更碎，最大 7×7'}
-            </p>
+        <div className="field">
+          <div className="field__label">
+            选难度
+            <span className="field__label-hint">
+              {mode === 'level' ? '各 3 关' : '盘子不变，越切越碎'}
+            </span>
           </div>
-        ) : (
+          <div className="pills">
+            {TIERS_ORDER.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`pill${tier === t ? ' pill--on' : ''}`}
+                onClick={() => setTier(t)}
+              >
+                {TIER_LABELS[t]}
+              </button>
+            ))}
+          </div>
+          <p className="field__hint">
+            {mode === 'level'
+              ? (() => {
+                  // 难度只由两个数决定：多少格、切成几块。文案直接把这俩数写出来，不绕弯子
+                  const lv = TIERS[tier];
+                  const first = lv[0];
+                  const last = lv[lv.length - 1];
+                  return `${first.cols}×${first.rows}（${first.cols * first.rows} 格），切成 ${first.pieces}~${last.pieces} 块`;
+                })()
+              : /* 无尽模式：盘子尺寸钉死，碎片数从第一关起一档一档往上加 */
+                `一直是 ${et.cols}×${et.rows}（${et.cols * et.rows} 格），从 ${et.minPieces} 块起，每 ${et.gainEvery} 关多切一块，最多 ${et.maxPieces} 块`}
+          </p>
+        </div>
+
+        {mode === 'endless' && (
           <div className="field">
             <div className="field__label">规则</div>
             <p className="field__hint" style={{ marginTop: 0 }}>
-              开局 {fmtSec(ENDLESS_INITIAL_MS)}，每拼完一关按盘子大小补时间（第一关 +{firstBonus}）。
-              盘子越拼越大、块越拼越碎，时间迟早会花光——看你能撑到第几关。
+              开局 {fmtSec(ENDLESS_INITIAL_MS[tier])}，每拼完一关补时间：第一关 +
+              {firstBonus}，之后每关补得少一点。盘子大小不变，碎片越切越多（最多{' '}
+              {et.maxPieces} 块），时间花光就结束——看你能撑到第几关。
             </p>
             {best > 0 && (
               <p className="field__hint">
-                最好成绩：<b>{best}</b> 关
+                本档最好成绩：<b>{best}</b> 关
               </p>
             )}
           </div>
@@ -110,8 +126,8 @@ export function PuzzleSetup({ onStart, best }: Props) {
       </div>
 
       <p className="today__hint" style={{ marginTop: 14 }}>
-        玩法：把下面的碎块拖进盘子里，铺满所有格子就过关。拖不准时松手会自动吸到最近的位置；
-        也可以先点碎块、再点格子。
+        玩法：把下面的碎块拖进盘子里，铺满所有格子就过关。块跟着手走，棋盘上的绿格是松手会落的位置，
+        差一格会自动对齐、放不下就标红并留在原处；也可以先点碎块、再点格子。
       </p>
 
       <div className="btn-row">
@@ -120,7 +136,7 @@ export function PuzzleSetup({ onStart, best }: Props) {
           className="btn btn--primary btn--block"
           onClick={() => onStart({ mode, tier })}
         >
-          {mode === 'level' ? `开始闯关 · ${TIER_LABELS[tier]}` : '开始无尽'}
+          {mode === 'level' ? `开始闯关 · ${TIER_LABELS[tier]}` : `开始无尽 · ${TIER_LABELS[tier]}`}
         </button>
       </div>
     </>

@@ -38,8 +38,15 @@ export interface Puzzle {
 export interface LevelConfig {
   cols: number;
   rows: number;
-  /** 单块目标格数，实际块数 ≈ 总格数 / targetSize */
-  targetSize: number;
+  /**
+   * 这一关要切成几块。
+   *
+   * 难度其实只有两个自变量：**盘子有多少格**、**切成几块**。
+   * 以前用的是「单块目标格数」（targetSize），块数是它算出来的副产品——
+   * 想调「更碎一点」得反推着改格数，改完块数还不一定对。
+   * 直接要块数，难度就是一个能写死的数，也才说得清「越碎越难」。
+   */
+  pieces: number;
   /** 从区域上挖掉多少格，让形状不再是规整的矩形 */
   carve: number;
 }
@@ -258,87 +265,60 @@ function cutTree(
   return [group, members.filter((n) => !seen.has(n))];
 }
 
-/** 递归对半切，直到每块都不超过 maxSize */
-function decompose(
+/**
+ * 把整块区域切成 target 块。
+ *
+ * 每一刀都切**当前最大的那一块**——切最大的，块大小才会越切越均匀；
+ * 随手挑一块切，最后必然出现「三块巨无霸 + 一堆碎渣」。
+ *
+ * 只在两半都至少 2 格时才认这一刀：单格块抓不住也没法再分，
+ * 与其切出渣，不如让块数少一块——所以实际块数可能略少于 target，
+ * 但每一块都是能拿在手上拼的。
+ */
+function splitInto(
   members: number[],
   adj: Map<number, number[]>,
-  maxSize: number,
-  out: number[][],
-): void {
-  if (members.length <= maxSize) {
-    out.push(members);
-    return;
-  }
-  // 0.36~0.50 之间随机取切点，块大小才会有差异；固定取一半的话每块都一样大，拼起来没意思
-  let left: number[] = [];
-  let right: number[] = [];
-  // 有时按目标大小挑中的那条边，切出来正好是单个格子（和某个 3 格子树打平时），
-  // 单格块太寒酸，换个切点重试几次
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const target = Math.round(members.length * (0.36 + Math.random() * 0.14));
-    [left, right] = cutTree(members, adj, target);
-    if (left.length === 0 || right.length === 0) continue;
-    if (left.length >= 2 && right.length >= 2) break;
-  }
-  if (left.length === 0 || right.length === 0) {
-    out.push(members);
-    return;
-  }
-  decompose(left, adj, maxSize, out);
-  decompose(right, adj, maxSize, out);
-}
-
-/**
- * 把小碎块并进相邻块。
- *
- * 只在「并进去不会超上限」时才并，而且是整块并（两侧都连通，并完必然连通）。
- * 找不到空位就让它独立成块——一块两格的骨牌完全能玩，
- * 硬塞进邻块把它撑成 8 格、10 格才是真的难看。
- */
-function mergeSmall(
-  pieces: number[][],
-  cols: number,
-  rows: number,
-  minSize: number,
-  maxSize: number,
+  target: number,
 ): number[][] {
-  const list = pieces.map((p) => [...p]);
-  let guard = 0;
+  const parts: number[][] = [members];
+  // 切不动的大块（形状太窄，切下去必然出现 1 格）按引用记下来，避免反复重试
+  const stuck = new Set<number[]>();
 
-  while (guard < 40) {
-    guard += 1;
-
-    // 每次挑最小的那块处理，免得大碎块把空间占完
+  while (parts.length < target) {
     let idx = -1;
-    let smallest = Infinity;
-    list.forEach((p, i) => {
-      if (p.length < minSize && p.length < smallest) {
-        smallest = p.length;
-        idx = i;
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      if (stuck.has(part)) continue;
+      // 不足 4 格切不出「2 格 + 2 格」，直接标死
+      if (part.length < 4) {
+        stuck.add(part);
+        continue;
       }
-    });
+      if (idx < 0 || part.length > parts[idx].length) idx = i;
+    }
     if (idx < 0) break;
 
-    const small = new Set(list[idx]);
-    let target = -1;
-    let targetSize = Infinity;
-    list.forEach((p, j) => {
-      if (j === idx) return;
-      if (p.length + small.size > maxSize) return; // 塞进去会超上限
-      const touches = p.some((n) => neighborsOf(n, cols, rows).some((m) => small.has(m)));
-      if (!touches) return;
-      if (p.length < targetSize) {
-        targetSize = p.length;
-        target = j;
+    const current = parts[idx];
+    let left: number[] = [];
+    let right: number[] = [];
+    let ok = false;
+    // 0.38~0.54 之间随机取切点：固定对半的话每块都一样大，拼起来没意思
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const cut = Math.round(current.length * (0.38 + Math.random() * 0.16));
+      [left, right] = cutTree(current, adj, cut);
+      if (left.length >= 2 && right.length >= 2) {
+        ok = true;
+        break;
       }
-    });
-    if (target < 0) break; // 没地方放，就让它独立存在
-
-    list[target] = [...list[target], ...list[idx]];
-    list.splice(idx, 1);
+    }
+    if (!ok) {
+      stuck.add(current);
+      continue;
+    }
+    parts.splice(idx, 1, left, right);
   }
 
-  return list;
+  return parts;
 }
 
 function toPiece(members: number[], id: number, cols: number): PuzzlePiece {
@@ -354,24 +334,19 @@ function toPiece(members: number[], id: number, cols: number): PuzzlePiece {
 }
 
 export function generatePuzzle(level: number, config: LevelConfig): Puzzle {
-  const { cols, rows, targetSize, carve } = config;
+  const { cols, rows, pieces: wanted, carve } = config;
   const region = buildRegion(cols, rows, carve);
   const cells = regionCells(region);
 
-  // 块的上限比目标大 1、下限比目标小 2：切出来的块大小才会落在
-  // 「够小不至于一放就满，够大不至于碎得抓不住」这个区间里
-  const maxSize = clamp(targetSize + 1, 3, 9);
-  const minSize = clamp(targetSize - 2, 2, maxSize);
-  // 直接按 maxSize 切。压到 maxSize-1 会让块数暴涨（8×8 切出 22 块，碎得没法玩）
-  const splitCap = maxSize;
+  /*
+    块数上限按「每块至少 2 格」卡死：区域 28 格最多切成 14 块，
+    再往上就只能切出单格渣——抓着都费劲，也别谈什么难度。
+  */
+  const target = clamp(wanted, 2, Math.floor(cells.length / 2));
 
   const tree = buildTree(region, cols, rows);
-  const parts: number[][] = [];
-  decompose(cells, tree, splitCap, parts);
-
-  // 递归切分收尾时可能剩下一两块很小的，能并则并
-  const merged = mergeSmall(parts, cols, rows, minSize, maxSize);
-  const shuffled = shuffle(merged);
+  const parts = splitInto(cells, tree, target);
+  const shuffled = shuffle(parts);
 
   return {
     level,
@@ -394,57 +369,123 @@ export const TIER_LABELS: Record<Tier, string> = {
 };
 
 /**
- * 三档难度各 3 关，数值调过：
- * - 简单：全是矩形，4×4 起步，块少而大，7 岁第一次玩能通
- * - 中等：开始挖格子，6×6 收尾
- * - 困难：挖得更多，块更小更多，7×7 收尾
+ * 三档难度各 3 关。
+ *
+ * 难度只用两个数表达，别的不算数：
+ *   - **格子数**：4×4 十六格 → 5×5 二十五格 → 6×6 三十六格
+ *   - **碎片数**：三档分别是 3~5 块、6~8 块、9~12 块
+ *
+ * 碎片越多越难，因为每一块都要单独认形状、单独找位置。
+ * 同一档里三关的格子不变，只加碎片数——这样「第二关比第一关难」
+ * 才是真的难了一点点，而不是盘子突然大了一圈。
+ *
+ * 三档的盘子都压在 6×6 以内，是为了让**每格在屏幕上的大小完全一样**：
+ * 难度不该靠「简单的格子更大」来伪装，那样简单档的块反而又大又笨。
  */
 export const TIERS: Record<Tier, LevelConfig[]> = {
   easy: [
-    { cols: 4, rows: 4, targetSize: 5, carve: 0 },
-    { cols: 5, rows: 4, targetSize: 5, carve: 0 },
-    { cols: 5, rows: 5, targetSize: 5, carve: 2 },
+    { cols: 4, rows: 4, pieces: 3, carve: 0 },
+    { cols: 4, rows: 4, pieces: 4, carve: 0 },
+    { cols: 4, rows: 4, pieces: 5, carve: 0 },
   ],
   normal: [
-    { cols: 5, rows: 5, targetSize: 4, carve: 3 },
-    { cols: 6, rows: 5, targetSize: 5, carve: 4 },
-    { cols: 6, rows: 6, targetSize: 5, carve: 6 },
+    { cols: 5, rows: 5, pieces: 6, carve: 2 },
+    { cols: 5, rows: 5, pieces: 7, carve: 3 },
+    { cols: 5, rows: 5, pieces: 8, carve: 4 },
   ],
   hard: [
-    { cols: 6, rows: 6, targetSize: 4, carve: 8 },
-    { cols: 7, rows: 6, targetSize: 4, carve: 10 },
-    { cols: 7, rows: 7, targetSize: 4, carve: 12 },
+    { cols: 6, rows: 6, pieces: 9, carve: 6 },
+    { cols: 6, rows: 6, pieces: 11, carve: 7 },
+    { cols: 6, rows: 6, pieces: 12, carve: 8 },
   ],
 };
 
 /**
- * 无尽模式第 n 关的配置。
- * 棋盘每 3 关长一格（上限 8），挖空比例随关数上升，
- * 块的目标尺寸从 5 降到 4——同样是 49 格，4 格的块要多拼三块。
+ * 无尽模式的一档：盘子尺寸钉死，碎片数随关卡从少长到多。
+ *
+ * 早先是「每 3 关长一格」的自动递进，13 关就到 8×8 顶格，孩子还没玩开就撞墙了；
+ * 后来改成盘子完全不动，结果每关长得一模一样，只是换了张图——玩到第十关和第一关
+ * 手感毫无区别，压力全由倒计时提供，那更像限时挑战，不像「越玩越难」。
+ *
+ * 现在取中间：**格子数不动，只让切分变碎**。
+ * 盘子不涨是因为格子一变，每格在屏幕上的大小就跟着变（棋盘按 MAX_GRID 分配），
+ * 手感会突跳；而碎片数从少到多，是同一张盘子上实打实的加难：
+ * 块更多、每块更小、要找的位置更多。
+ *
+ * 为什么是确定性递增而不是每关随机：随机的话「这关 4 块下一关 11 块」会让人
+ * 莫名其妙地翻车，也没法从关数看出自己进步到哪了。每 2 关多一块，节奏可预期。
  */
-export function endlessConfig(level: number): LevelConfig {
-  const grown = Math.min(8, 4 + Math.floor((level - 1) / 3));
-  // 每 3 关来一次非正方形，避免一直是方阵
-  const rows = level % 3 === 0 ? Math.max(4, grown - 1) : grown;
-  const cells = grown * rows;
-  return {
-    cols: grown,
-    rows,
-    targetSize: level <= 3 ? 5 : 4,
-    carve: Math.round(cells * Math.min(0.28, 0.03 * level)),
-  };
+export interface EndlessTier {
+  cols: number;
+  rows: number;
+  carve: number;
+  /** 第一关切几块 */
+  minPieces: number;
+  /**
+   * 碎片上限。
+   *
+   * 两个约束同时卡着：一是「每块至少 2 格」（区域 16 / 22 / 29 格），
+   * 再往上就只能切单格渣；二是托盘——手机上十二块已经要占三四行，
+   * 再多就把棋盘压得没地方看了。
+   */
+  maxPieces: number;
+  /** 每几关多切一块 */
+  gainEvery: number;
 }
 
-/** 无尽模式的初始时间 */
-export const ENDLESS_INITIAL_MS = 150_000;
+export const ENDLESS_TIERS: Record<Tier, EndlessTier> = {
+  easy: { cols: 4, rows: 4, carve: 0, minPieces: 3, maxPieces: 6, gainEvery: 2 },
+  normal: { cols: 5, rows: 5, carve: 3, minPieces: 6, maxPieces: 9, gainEvery: 2 },
+  hard: { cols: 6, rows: 6, carve: 7, minPieces: 9, maxPieces: 12, gainEvery: 2 },
+};
+
+/** 无尽模式第 level 关切几块：每 gainEvery 关多一块，到上限就停 */
+export function endlessPieces(tier: Tier, level: number): number {
+  const t = ENDLESS_TIERS[tier];
+  const grown = t.minPieces + Math.floor((Math.max(1, level) - 1) / t.gainEvery);
+  return Math.min(t.maxPieces, grown);
+}
+
+export function endlessConfig(tier: Tier, level: number): LevelConfig {
+  const t = ENDLESS_TIERS[tier];
+  return { cols: t.cols, rows: t.rows, carve: t.carve, pieces: endlessPieces(tier, level) };
+}
+
+/**
+ * 全游戏里最大的盘子边长。
+ *
+ * 棋盘按「可用空间 ÷ MAX_GRID」定格子大小，于是 4×4 和 6×6 分到同样的格宽，
+ * 简单档只是整体小一圈。写死一个 6 容易和上面的表脱钩，所以从表里算出来。
+ */
+export const MAX_GRID: number = (() => {
+  let n = 2;
+  for (const tier of ['easy', 'normal', 'hard'] as Tier[]) {
+    for (const cfg of TIERS[tier]) n = Math.max(n, cfg.cols, cfg.rows);
+    const endless = ENDLESS_TIERS[tier];
+    n = Math.max(n, endless.cols, endless.rows);
+  }
+  return n;
+})();
+
+/** 无尽模式的初始时间。盘子越大，给得越多 */
+export const ENDLESS_INITIAL_MS: Record<Tier, number> = {
+  easy: 150_000,
+  normal: 180_000,
+  hard: 210_000,
+};
 
 /**
  * 完成一关加多少时间。
  *
- * 系数是照着「孩子实际耗时」估的：4×4 大约 30~40 秒，加成 38 秒，
- * 手快能攒时间；到 7×7 要一分半，加成只有 55 秒，时间就开始往下掉。
- * 所以它迟早会结束，但不是一开始就被卡死。
+ * 盘子固定之后，加时如果也固定，手一熟就是净赚——时间从 2:30 一路涨到 5 分钟，
+ * 永远结束不了，那样就不叫无尽了。所以加成随关数收紧：每关少 4%，收到 45% 封底。
+ *
+ * 起手值按两件事给：盘子有多大（格数），这一关切成了几块。
+ * 碎片越多、摆一轮越久，加时必须跟着涨一点，否则「多切一块」就等于白扣时间；
+ * 但每块只补 1.6 秒——补满是净赚，补一部分才是「越往后越紧」的坡度。
  */
-export function timeBonusMs(config: LevelConfig): number {
-  return Math.round((30 + config.cols * config.rows * 0.5) * 1000);
+export function timeBonusMs(config: LevelConfig, level: number): number {
+  const base = 30 + config.cols * config.rows * 0.5 + config.pieces * 1.6;
+  const decay = Math.max(0.45, 1 - (level - 1) * 0.04);
+  return Math.round(base * decay * 1000);
 }

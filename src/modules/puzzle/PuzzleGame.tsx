@@ -1,7 +1,8 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Cell, Puzzle, PuzzlePiece } from './generator.ts';
-import { PALETTE } from './generator.ts';
+import { MAX_GRID, PALETTE } from './generator.ts';
+import { CELL_MAX, fitCell } from './layout.ts';
 import { dragAnchor, pickAnchor } from './anchor.ts';
 
 interface Props {
@@ -47,6 +48,16 @@ type Placed = Record<number, Cell>;
 const TAP_SLOP = 8;
 
 /**
+ * 待选区里一格多大。
+ *
+ * 故意写成定值而不是「棋盘格子的几分之一」：棋盘大小是按剩余高度算的，
+ * 托盘高度又反过来吃掉剩余高度，两边互相喂就会来回抖。
+ * 定值还顺带保证了换难度、换设备时托盘长得一样。
+ * 22 是折中：再大一档，困难关十二块就会在手机上堆到四行，把棋盘压没。
+ */
+const TRAY_CELL = 22;
+
+/**
  * 拼满后的浮层。这里必须给一个明确的出口按钮：
  * 早先是 900ms 后自动进下一关，孩子还没看清「拼好啦」画面就被换走了，
  * 也不知道自己是怎么过去的。改成手点，节奏交回玩家。
@@ -72,9 +83,37 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   const [done, setDone] = useState(false);
 
   const boardRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const trayRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
+
+  /**
+   * 一格的边长（CSS 像素）。
+   *
+   * 分母固定用 MAX_GRID 而不是当前盘子的 cols：4×4 和 6×6 分到的是同一个格宽，
+   * 简单档的盘子整体小一圈，而不是把小盘子的格子撑大。
+   * 早先棋盘是 width:100% + max-width，等于「格子大小跟着盘子大小反着走」——
+   * 4×4 只有十六格却铺满全屏，每块大得像块砖，简单档反而最笨重。
+   */
+  const [cell, setCell] = useState(CELL_MAX);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return undefined;
+
+    const measure = () => {
+      const w = stage.clientWidth;
+      const h = stage.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      setCell(fitCell(w, h, MAX_GRID));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
 
   const dragPieceId = drag?.pieceId ?? null;
 
@@ -319,9 +358,6 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
     window.setTimeout(() => setHint(null), 1800);
   };
 
-  // 托盘里的块按棋盘格子的 55% 画；太大装不下，太小抓不住
-  const trayCell = Math.round(Math.min(34, Math.max(18, (340 / cols) * 0.55)));
-
   const cellStyle = (x: number, y: number, w: number, h: number): CSSProperties => ({
     left: `${(x / w) * 100}%`,
     top: `${(y / h) * 100}%`,
@@ -341,16 +377,20 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
     drag.raw.y === drag.origin.y
   );
   const dropAnchor = drag && !stuckAtOrigin ? (drag.anchor ?? drag.raw) : null;
-  const boardRect = boardRef.current?.getBoundingClientRect();
-  const boardCell = boardRect ? boardRect.width / cols : 40;
+  const boardCell = cell;
 
   return (
     <div className="pz">
-      <div className="pz-stage">
+      <div className="pz-stage" ref={stageRef}>
         <div
           ref={boardRef}
           className={`pz-board${done ? ' pz-board--done' : ''}`}
-          style={{ '--cols': cols, '--rows': rows } as CSSProperties}
+          style={{
+            width: cell * cols,
+            height: cell * rows,
+            '--cols': cols,
+            '--rows': rows,
+          } as CSSProperties}
           onPointerDown={placeByTap}
         >
           {region.map((on, i) => (
@@ -426,22 +466,33 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
           drag?.overTray ? ' pz-tray--over' : ''
         }`}
       >
-        {unplaced.map((piece) => (
-          <div
-            key={piece.id}
-            className={`pz-slot${selected === piece.id ? ' pz-slot--on' : ''}`}
-            style={{
-              width: piece.w * trayCell,
-              height: piece.h * trayCell,
-              '--pc': PALETTE[piece.color],
-            } as CSSProperties}
-            onPointerDown={(e) => beginDrag(e, piece, null)}
-          >
-            {piece.cells.map((c, i) => (
-              <i key={i} style={cellStyle(c.x, c.y, piece.w, piece.h)} />
-            ))}
-          </div>
-        ))}
+        {/*
+          已经放上棋盘的块不从这里移除，只留一个空位（visibility: hidden）。
+          移除的话托盘会少占一行、高度一缩，而棋盘是按剩余高度定尺寸的，
+          于是每放下一块棋盘就跟着长一圈——整局都在轻微抖动，很晃眼。
+          留空位之后托盘高度从开局到结束一动不动，顺带也看得出「一共几块、还剩几块」。
+        */}
+        {pieces.map((piece) => {
+          const gone = placed[piece.id] !== undefined;
+          return (
+            <div
+              key={piece.id}
+              className={`pz-slot${gone ? ' pz-slot--gone' : ''}${
+                selected === piece.id ? ' pz-slot--on' : ''
+              }`}
+              style={{
+                width: piece.w * TRAY_CELL,
+                height: piece.h * TRAY_CELL,
+                '--pc': PALETTE[piece.color],
+              } as CSSProperties}
+              onPointerDown={gone ? undefined : (e) => beginDrag(e, piece, null)}
+            >
+              {piece.cells.map((c, i) => (
+                <i key={i} style={cellStyle(c.x, c.y, piece.w, piece.h)} />
+              ))}
+            </div>
+          );
+        })}
         {unplaced.length === 0 && <span className="pz-tray__done">全部放完了</span>}
         {drag?.overTray && <span className="pz-tray__hint">松手，这块就放回待选区</span>}
       </div>

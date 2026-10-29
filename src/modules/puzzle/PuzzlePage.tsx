@@ -50,7 +50,16 @@ export function PuzzlePage() {
   const [times, setTimes] = useState<number[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [best, setBest] = useState(0);
+  /**
+   * 无尽模式的最好成绩按难度分开记。
+   * 三档固定难度之后，「简单 40 关」和「困难 12 关」根本不是一回事，
+   * 混在一个数字里只会让困难档永远看不到自己的进步。
+   */
+  const [bestByTier, setBestByTier] = useState<Record<Tier, number>>({
+    easy: 0,
+    normal: 0,
+    hard: 0,
+  });
 
   const deadlineRef = useRef(0);
   const levelStartRef = useRef(0);
@@ -60,7 +69,11 @@ export function PuzzlePage() {
 
   useEffect(() => {
     const saved = readPref('puzzle-best');
-    if (typeof saved === 'number') setBest(saved);
+    // 旧版存的是一个数字（跨难度自动递进时代的关数），语义已经对不上，直接忽略
+    if (!saved || typeof saved !== 'object') return;
+    const raw = saved as Record<string, unknown>;
+    const pick = (t: Tier) => (typeof raw[t] === 'number' ? (raw[t] as number) : 0);
+    setBestByTier({ easy: pick('easy'), normal: pick('normal'), hard: pick('hard') });
   }, []);
 
   const totalLevels = TIERS[config.tier].length;
@@ -90,23 +103,24 @@ export function PuzzlePage() {
         record(session);
       }
 
-      if (config.mode === 'endless' && solved > best) {
-        setBest(solved);
-        writePref('puzzle-best', solved);
+      if (config.mode === 'endless' && solved > (bestByTier[config.tier] ?? 0)) {
+        const nextBest = { ...bestByTier, [config.tier]: solved };
+        setBestByTier(nextBest);
+        writePref('puzzle-best', nextBest);
       }
 
       setTimes(doneTimes);
       setOutcome({ reason, times: doneTimes, totalMs, wallMs: stamp - sessionStartRef.current });
       setPhase('result');
     },
-    [best, config.mode, record, today],
+    [bestByTier, config.mode, config.tier, record, today],
   );
 
   const endRef = useRef(endSession);
   endRef.current = endSession;
 
   const start = (next: PuzzleStartConfig) => {
-    const first = next.mode === 'level' ? TIERS[next.tier][0] : endlessConfig(1);
+    const first = next.mode === 'level' ? TIERS[next.tier][0] : endlessConfig(next.tier, 1);
     const stamp = Date.now();
     setConfig(next);
     setLevel(1);
@@ -115,7 +129,7 @@ export function PuzzlePage() {
     setPuzzle(generatePuzzle(1, first));
     levelStartRef.current = stamp;
     sessionStartRef.current = stamp;
-    deadlineRef.current = stamp + ENDLESS_INITIAL_MS;
+    deadlineRef.current = stamp + ENDLESS_INITIAL_MS[next.tier];
     setNow(stamp);
     closedRef.current = false;
     setPhase('play');
@@ -125,9 +139,10 @@ export function PuzzlePage() {
   const handleFinish = () => {
     const stamp = Date.now();
     setTimes([...times, stamp - levelStartRef.current]);
-    // 在拼完那一刻补时间，而不是点按钮那一刻——否则玩家在浮层上犹豫几秒就白亏几秒
+    // 在拼完那一刻补时间，而不是点按钮那一刻——否则玩家在浮层上犹豫几秒就白亏几秒。
+    // 用这一关实际的目标块数算加时：碎片数随关数在涨，拿第一关的数会少补
     if (config.mode === 'endless') {
-      deadlineRef.current += timeBonusMs(endlessConfig(level));
+      deadlineRef.current += timeBonusMs(endlessConfig(config.tier, level), level);
     }
   };
 
@@ -140,8 +155,11 @@ export function PuzzlePage() {
     }
 
     const nextLevel = level + 1;
+    // 无尽模式：盘子还是这一档的盘子，但碎片数会按关数往上长
     const nextConfig =
-      config.mode === 'level' ? TIERS[config.tier][nextLevel - 1] : endlessConfig(nextLevel);
+      config.mode === 'level'
+        ? TIERS[config.tier][nextLevel - 1]
+        : endlessConfig(config.tier, nextLevel);
     setLevel(nextLevel);
     setPuzzle(generatePuzzle(nextLevel, nextConfig));
     // 下一关从「点下按钮」起算，浮层上停留的那段不算
@@ -180,7 +198,7 @@ export function PuzzlePage() {
             </div>
           </div>
         </header>
-        <PuzzleSetup onStart={start} best={best} />
+        <PuzzleSetup onStart={start} bestByTier={bestByTier} />
       </div>
     );
   }
@@ -191,7 +209,7 @@ export function PuzzlePage() {
         outcome={outcome}
         mode={config.mode}
         tier={config.tier}
-        best={best}
+        best={bestByTier[config.tier]}
         onAgain={() => start(config)}
         onChange={() => setPhase('setup')}
         onHome={() => navigate('/')}
@@ -202,9 +220,10 @@ export function PuzzlePage() {
   const remaining = deadlineRef.current - now;
   const urgent = config.mode === 'endless' && remaining < 20_000;
   const isLastLevel = config.mode === 'level' && level >= totalLevels;
+  // 进度条始终以「本档的初始时间」为满格：加时会让剩余时间超过初始值，这里自然被夹到 100%
   const barPct =
     config.mode === 'endless'
-      ? Math.min(100, Math.max(0, (remaining / ENDLESS_INITIAL_MS) * 100))
+      ? Math.min(100, Math.max(0, (remaining / ENDLESS_INITIAL_MS[config.tier]) * 100))
       : ((level - 1) / totalLevels) * 100;
 
   return (
@@ -276,8 +295,8 @@ function PuzzleResult({ outcome, mode, tier, best, onAgain, onChange, onHome }: 
     outcome.reason === 'clear'
       ? `${TIER_LABELS[tier]} 三关，一关没落`
       : outcome.reason === 'timeup'
-        ? '无尽模式就是这样，时间用完了'
-        : '已经拼好的都记下来了';
+        ? `${TIER_LABELS[tier]}难度 · 时间用完了`
+        : `${TIER_LABELS[tier]}难度 · 已经拼好的都记下来了`;
 
   return (
     <div className="app">
@@ -327,7 +346,7 @@ function PuzzleResult({ outcome, mode, tier, best, onAgain, onChange, onHome }: 
 
         {mode === 'endless' && best > 0 && (
           <p className="today__hint" style={{ marginTop: 4 }}>
-            历史最好：{best} 关
+            {TIER_LABELS[tier]}难度最好成绩：{best} 关
           </p>
         )}
 
