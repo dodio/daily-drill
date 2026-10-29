@@ -1017,23 +1017,18 @@ input {
   position: fixed;
   z-index: 60;
   pointer-events: none;
-  opacity: 0.94;
-  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.22));
   /*
-    自由跟随和对齐格子用的是两套定位基准，切换时最多差半格。
-    不加过渡的话这一下是瞬跳，看着就像块被甩掉了；
-    过渡压到 60ms，滑过去，手感才连得上。
+    半透明是必要的，不是装饰：块不再吸附到格子上，落点只能靠棋盘上那圈
+    预览格表达，而预览就在块底下。块太实就把预览整个盖住了。
+    半透明之后「手上这块」和「它会落在哪些格」能同时看见。
   */
-  transition: left 0.06s ease-out, top 0.06s ease-out;
-}
-
-/*
-  吸附只表达为「贴到格子上 + 预览变绿」。
-  早先这里还把阴影撤掉（filter: none），视觉上更像块脱手掉下去，
-  一并去掉——吸附不该让块看起来失去了重量。
-*/
-.pz-ghost--snap {
-  opacity: 1;
+  opacity: 0.72;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.18));
+  /*
+    位置每帧都按「指针 - 抓取偏移」算准，所以绝对不能有过渡——
+    加了只会让块慢半拍追手指，越拖越飘。
+  */
+  transition: none;
 }
 
 .pz-drop {
@@ -1042,20 +1037,21 @@ input {
   pointer-events: none;
 }
 
+/* 落点预览要隔着半透明的块还能看清，所以描边比普通提示更重 */
 .pz-drop--ok {
-  background: rgba(31, 169, 113, 0.26);
-  box-shadow: inset 0 0 0 2px var(--success);
+  background: rgba(31, 169, 113, 0.32);
+  box-shadow: inset 0 0 0 2.5px var(--success);
 }
 
 /* 自动纠正了一格：用黄色，和「本来就对准了」区分开 */
 .pz-drop--near {
-  background: rgba(244, 183, 64, 0.3);
-  box-shadow: inset 0 0 0 2px #e8a317;
+  background: rgba(244, 183, 64, 0.36);
+  box-shadow: inset 0 0 0 2.5px #e8a317;
 }
 
 .pz-drop--bad {
-  background: rgba(229, 72, 77, 0.2);
-  box-shadow: inset 0 0 0 2px var(--danger);
+  background: rgba(229, 72, 77, 0.24);
+  box-shadow: inset 0 0 0 2.5px var(--danger);
 }
 
 .pz-hint {

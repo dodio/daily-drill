@@ -2,7 +2,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Cell, Puzzle, PuzzlePiece } from './generator.ts';
 import { PALETTE } from './generator.ts';
-import { pickAnchor } from './anchor.ts';
+import { dragAnchor, pickAnchor } from './anchor.ts';
 
 interface Props {
   puzzle: Puzzle;
@@ -19,15 +19,19 @@ interface Props {
 
 interface DragState {
   pieceId: number;
-  /** 手指抓住的是块内第几格（相对块的包围盒） */
-  grab: Cell;
+  /**
+   * 指针抓住的那一点在块内的位置，单位是格，带小数。
+   * 存整数格的话，块只能按整格对齐指针，块和指尖之间会永远差着最多半格。
+   */
+  grabX: number;
+  grabY: number;
   startX: number;
   startY: number;
   px: number;
   py: number;
-  /** 指针正对着的锚点，可能非法 */
+  /** 按「块左上角最近的格」算出来的落点，可能非法 */
   raw: Cell | null;
-  /** 吸附后的合法锚点 */
+  /** 核过合法性之后的落点：有值就表示松手能落在那里。块本身不会挪过去 */
   anchor: Cell | null;
   /** 位置做过自动纠正（差一格吸过去） */
   adjusted: boolean;
@@ -106,13 +110,13 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   );
 
   /**
-   * 把指针位置换算成落点。规则本身在 anchor.ts 里，这里只接上「能不能放」。
-   * prev 传上一帧吸住的锚点，用于「别一抖就松手」；
-   * blocked 传从棋盘拿起时的原位，那次拖动里不许再被吸回去。
+   * 把「块想落在的这一格」核成「最终允许落在哪一格」。
+   * 规则本身在 anchor.ts 里，这里只接上「能不能放」；
+   * blocked 传从棋盘拿起时的原位，那次拖动里不许落回那里。
    */
   const resolveAnchor = useCallback(
-    (piece: PuzzlePiece, raw: Cell, prev: Cell | null, blocked: Cell | null) =>
-      pickAnchor(raw, prev, (anchor) => canPlace(piece, anchor), blocked),
+    (piece: PuzzlePiece, raw: Cell, blocked: Cell | null) =>
+      pickAnchor(raw, (anchor) => canPlace(piece, anchor), blocked),
     [canPlace],
   );
 
@@ -126,15 +130,12 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     const unit = rect.width / piece.w;
-    const grab = {
-      x: Math.floor((event.clientX - rect.left) / unit),
-      y: Math.floor((event.clientY - rect.top) / unit),
-    };
     setSelected(null);
     setHint(null);
     setDrag({
       pieceId: piece.id,
-      grab,
+      grabX: (event.clientX - rect.left) / unit,
+      grabY: (event.clientY - rect.top) / unit,
       startX: event.clientX,
       startY: event.clientY,
       px: event.clientX,
@@ -167,9 +168,17 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
       const rect = board.getBoundingClientRect();
       const cell = rect.width / cols;
       const piece = pieces[state.pieceId];
-      const gx = Math.floor((event.clientX - rect.left) / cell);
-      const gy = Math.floor((event.clientY - rect.top) / cell);
-      const raw = { x: gx - state.grab.x, y: gy - state.grab.y };
+      // 块这一放会落在哪一格。只做判定，块本身按指针精确跟着走，
+      // 不做吸附——一旦吸附，就必须设阈值，也就必然出现「想挪开得先移出那个区域」。
+      // 传上一帧的 raw 做迟滞，只为压住预览框在两格分界线上的抖动。
+      const raw = dragAnchor(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+        state.grabX,
+        state.grabY,
+        cell,
+        state.raw,
+      );
 
       // 离棋盘超过一格就当没对上，避免从很远的地方斜着拖也吸进来
       const outside =
@@ -181,10 +190,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
       // 指针挪到待选区上方：这块可以从棋盘撤回去了
       const overTray = state.origin !== null && inTray(event.clientX, event.clientY);
 
-      // blocked 传原位：捡起来的那一格不许再吸回去，块先跟着手走
-      // prev 传上一帧吸住的位置，吸附才有粘性
-      const hit =
-        outside || overTray ? null : resolveAnchor(piece, raw, state.anchor, state.origin);
+      // blocked 传原位：捡起来的那一格这次不算
+      const hit = outside || overTray ? null : resolveAnchor(piece, raw, state.origin);
       setDrag({
         ...state,
         px: event.clientX,
@@ -264,8 +271,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
     const gx = Math.floor((event.clientX - rect.left) / cell);
     const gy = Math.floor((event.clientY - rect.top) / cell);
     const piece = pieces[selected];
-    // 点格子落子没有「上一帧吸住的点」，也没有被锁住的原位
-    const hit = resolveAnchor(piece, { x: gx, y: gy }, null, null);
+    // 点格子落子：没有拖动，也就没有需要作废的原位
+    const hit = resolveAnchor(piece, { x: gx, y: gy }, null);
     if (hit) {
       setPlaced((prev) => ({ ...prev, [selected]: hit.anchor }));
       setSelected(null);
@@ -433,19 +440,19 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
         {drag?.overTray && <span className="pz-tray__hint">松手，这块就放回待选区</span>}
       </div>
 
-      {/* 拖动中的块跟着手指走；已经吸附到合法位置时直接贴到棋盘上，手感更实 */}
+      {/*
+        块永远精确长在指针底下，不做对齐吸附。
+        落在哪一格由棋盘上的绿色预览负责表达——块被吸到格子上就必须设阈值，
+        设了阈值就必然有「想挪开得先移出那个区域」的黏滞感。
+      */}
       {drag && draggedPiece && (
         <div
-          className={`pz-ghost${drag.anchor ? ' pz-ghost--snap' : ''}`}
+          className="pz-ghost"
           style={{
             width: draggedPiece.w * boardCell,
             height: draggedPiece.h * boardCell,
-            left: drag.anchor && boardRect
-              ? boardRect.left + drag.anchor.x * boardCell
-              : drag.px - (drag.grab.x + 0.5) * boardCell,
-            top: drag.anchor && boardRect
-              ? boardRect.top + drag.anchor.y * boardCell
-              : drag.py - (drag.grab.y + 0.5) * boardCell,
+            left: drag.px - drag.grabX * boardCell,
+            top: drag.py - drag.grabY * boardCell,
             '--pc': PALETTE[draggedPiece.color],
           } as CSSProperties}
         >
