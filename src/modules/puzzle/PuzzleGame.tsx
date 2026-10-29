@@ -261,7 +261,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
 
   // 点棋盘落子（先点块、再点格子的备用玩法，比拖拽省力，小屏上更好用）
   const placeByTap = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (selected === null || drag) return;
+    if (selected === null || drag || done) return;
     const target = event.target as HTMLElement;
     if (target.closest('.pz-piece')) return; // 点在已放置的块上，不算点格子
     const board = boardRef.current;
@@ -409,9 +409,15 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
               const tone = drag.anchor ? (drag.adjusted ? 'pz-drop--near' : 'pz-drop--ok') : 'pz-drop--bad';
               return <div key={`g${i}`} className={`pz-drop ${tone}`} style={cellStyle(x, y, cols, rows)} />;
             })}
-        </div>
 
-        {done && <PuzzleDone isLast={isLast} onNext={onNext} />}
+          {/*
+            完成浮层放进棋盘里面，而不是 stage 里。
+            stage 是「横向铺满、棋盘居中」，横屏平板下 stage 比棋盘宽得多，
+            浮层盖在 stage 上就会在棋盘两侧多出两层半透明的雾。
+            放进棋盘后浮层永远和盘子严丝合缝，顺带还能吃到拼满时的鼓一下动画。
+          */}
+          {done && <PuzzleDone isLast={isLast} onNext={onNext} />}
+        </div>
       </div>
 
       <div

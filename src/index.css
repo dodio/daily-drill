@@ -1304,6 +1304,108 @@ input {
   color: var(--ink);
 }
 
+/* ---------- 横屏适配：一屏装得下 ---------- */
+
+/*
+  横屏的稀缺资源是高度，不是宽度。
+
+  竖屏下棋盘由宽度决定（width:100%、max-width:420）没问题，因为竖屏高度富余。
+  横屏平板恰恰相反：宽度绰绰有余，棋盘却仍按宽度撑到 420 高，
+  加上头部、托盘、页脚就顶出视口，托盘和「重来/提示」被切掉——这就是
+  「游戏无法完整显示」。
+
+  改法是把整页锁成一屏高，棋盘改由「剩余高度」决定尺寸：
+  托盘占多少高度，棋盘就自动让出多少。托盘换到两行时棋盘自己小一圈，
+  不需要写死任何预留值。
+*/
+@media (orientation: landscape) {
+  /*
+    用 fixed + inset:0 锁一屏，而不是 height:100dvh。
+    dvh 一旦不被支持就整个高度塌成 auto，棋盘会连同托盘一起溢出——
+    退化成「还是看不全」。inset:0 不依赖任何新单位。
+    左右 margin:auto 配合 max-width 让宽屏居中（不能用 transform 居中：
+    拖动中的块是 position:fixed、按视口坐标定位，祖先一旦有 transform 就会跑偏）。
+  */
+  .pz-app {
+    position: fixed;
+    inset: 0;
+    margin: 0 auto;
+    max-width: 900px;
+    padding: 10px max(16px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
+    display: flex;
+    flex-direction: column;
+    /* 锁死一屏，宁可棋盘小一点也不要出现滚动条 */
+    overflow: hidden;
+  }
+
+  .pz-app .quiz-head {
+    flex: none;
+    margin-bottom: 8px;
+  }
+
+  .pz-app .pz {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .pz-app .pz-stage {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /*
+    height 定死、width:auto、比例来自 --cols / --rows：
+    宽度由高度推出来，棋盘永远是完整的一块，不会被裁。
+    flex:none 是必须的——否则 flex 会按内容（空的 grid）把宽度压成 0。
+    min(100%, 620px) 给大屏封顶，免得 1920×1080 上棋盘大到一屏放不下几块。
+  */
+  .pz-app .pz-board {
+    flex: none;
+    width: auto;
+    height: min(100%, 620px);
+    max-width: 100%;
+  }
+
+  .pz-app .pz-tray {
+    flex: none;
+    margin-top: 8px;
+    padding: 8px 10px;
+    min-height: 44px;
+    gap: 10px;
+  }
+
+  .pz-app .pz-foot {
+    flex: none;
+    margin-top: 6px;
+  }
+}
+
+/*
+  横屏而且高度很矮（手机横过来）：头部和托盘再瘦一圈，
+  把省下的都留给棋盘，不然 375 高的屏幕上棋盘只剩一百多像素。
+*/
+@media (orientation: landscape) and (max-height: 480px) {
+  .pz-app {
+    padding: 6px 12px max(6px, env(safe-area-inset-bottom));
+  }
+
+  .pz-app .quiz-head {
+    margin-bottom: 5px;
+  }
+
+  .pz-app .pz-tray {
+    margin-top: 5px;
+    padding: 5px 8px;
+    min-height: 34px;
+    gap: 7px;
+  }
+
+  .pz-app .pz-foot {
+    margin-top: 4px;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #17161a;
