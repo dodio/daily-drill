@@ -128,6 +128,7 @@ export function PuzzleSetup({ onStart, bestByTier }: Props) {
       <p className="today__hint" style={{ marginTop: 14 }}>
         玩法：把下面的碎块拖进盘子里，铺满所有格子就过关。块跟着手走，棋盘上的绿格是松手会落的位置，
         差一格会自动对齐、放不下就标红并留在原处；也可以先点碎块、再点格子。
+        放到一半不想要了，把块拖出画布松手，它就回到待选区——不用特意对准待选区扔。
       </p>
 
       <div className="btn-row">

@@ -38,14 +38,29 @@ interface DragState {
   adjusted: boolean;
   /** 从棋盘上拿起来时，原来的位置。从托盘拿起则为 null */
   origin: Cell | null;
-  /** 指针悬在待选区上方：松手就把这块放回去 */
-  overTray: boolean;
+  /**
+   * 指针已经拖出画布：松手就把这块收回待选区。
+   *
+   * 早先要求「指针精确落进待选区矩形」才算，手指得对准托盘还得避开棋盘边缘，
+   * 小朋友经常在两者之间的缝里松手，块就尴尬地留在原处。
+   * 现在只要把块拖出画布就算数——离开画布本来就是「我不要放在这儿了」的明确信号。
+   */
+  returning: boolean;
 }
 
 type Placed = Record<number, Cell>;
 
 /** 点一下的最大位移，超过就算拖拽 */
 const TAP_SLOP = 8;
+
+/**
+ * 指针越过棋盘边缘多远，算「把这块拖出画布了」。
+ *
+ * 单位是格，取半格：棋盘格 30~60px，也就是手指越过边缘 15~30px。
+ * 太灵敏的话，从边角格往外挪一点就误撤回；太迟钝又等于没简化。
+ * 半格既能兜住贴边操作的手抖，也不要求把块整个拖散。
+ */
+const OUT_SLOP = 0.5;
 
 /**
  * 待选区里一格多大。
@@ -84,7 +99,6 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const trayRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   dragRef.current = drag;
 
@@ -183,7 +197,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
       anchor: null,
       adjusted: false,
       origin,
-      overTray: false,
+      returning: false,
     });
   };
 
@@ -193,11 +207,23 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   useEffect(() => {
     if (!dragging) return undefined;
 
-    /** 指针是否落在待选区上方 */
-    const inTray = (x: number, y: number) => {
-      const tray = trayRef.current?.getBoundingClientRect();
-      if (!tray) return false;
-      return x >= tray.left && x <= tray.right && y >= tray.top && y <= tray.bottom;
+    /**
+     * 指针是不是已经拖出画布（越过边缘半格）。
+     *
+     * 每次都拿实时矩形算，不缓存：转屏、地址栏收放都会让棋盘改尺寸，
+     * 缓存一次就会让「出去了没有」这个判断一直偏着。
+     */
+    const outsideBoard = (x: number, y: number) => {
+      const board = boardRef.current;
+      if (!board) return false;
+      const rect = board.getBoundingClientRect();
+      const slop = (rect.width / cols) * OUT_SLOP;
+      return (
+        x < rect.left - slop ||
+        x > rect.right + slop ||
+        y < rect.top - slop ||
+        y > rect.bottom + slop
+      );
     };
 
     const move = (event: PointerEvent) => {
@@ -219,18 +245,12 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
         state.raw,
       );
 
-      // 离棋盘超过一格就当没对上，避免从很远的地方斜着拖也吸进来
-      const outside =
-        event.clientX < rect.left - cell ||
-        event.clientX > rect.right + cell ||
-        event.clientY < rect.top - cell ||
-        event.clientY > rect.bottom + cell;
-
-      // 指针挪到待选区上方：这块可以从棋盘撤回去了
-      const overTray = state.origin !== null && inTray(event.clientX, event.clientY);
+      // 拖出画布：落点作废，同时（只限从棋盘拿起来的块）表示松手就收回待选区
+      const outside = outsideBoard(event.clientX, event.clientY);
+      const returning = state.origin !== null && outside;
 
       // blocked 传原位：捡起来的那一格这次不算
-      const hit = outside || overTray ? null : resolveAnchor(piece, raw, state.origin);
+      const hit = outside ? null : resolveAnchor(piece, raw, state.origin);
       setDrag({
         ...state,
         px: event.clientX,
@@ -238,7 +258,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
         raw: outside ? null : raw,
         anchor: hit ? hit.anchor : null,
         adjusted: hit ? hit.adjusted : false,
-        overTray,
+        returning,
       });
     };
 
@@ -249,14 +269,15 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
         Math.hypot(event.clientX - state.startX, event.clientY - state.startY) > TAP_SLOP;
 
       /*
-        拖回待选区：把它从棋盘上撤下来，重新变成「没放」的块。
-        以最后一帧的 overTray 为主，pointerup 再用真实坐标兜一次底——
-        甩得快的时候最后一帧可能还差一点点没进托盘，光看 state 会漏判。
+        拖出画布：把它从棋盘上撤下来，重新变成「没放」的块。
+        以最后一帧的 returning 为主，pointerup 再用真实坐标兜一次底——
+        甩得快的时候最后一帧可能还在界内，光看 state 会漏判。
         pointercancel 不带可信坐标（常常是 0,0），所以只信 state。
       */
       const toTray =
         state.origin !== null &&
-        (state.overTray || (event.type === 'pointerup' && inTray(event.clientX, event.clientY)));
+        (state.returning ||
+          (event.type === 'pointerup' && outsideBoard(event.clientX, event.clientY)));
 
       if (moved && toTray) {
         setPlaced((prev) => {
@@ -440,7 +461,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
           {/* 拖拽时的落点预览：绿=能放，黄=自动纠正了一格，红=放不下 */}
           {drag &&
             draggedPiece &&
-            !drag.overTray &&
+            !drag.returning &&
             dropAnchor &&
             draggedPiece.cells.map((c, i) => {
               const x = dropAnchor.x + c.x;
@@ -461,9 +482,8 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
       </div>
 
       <div
-        ref={trayRef}
         className={`pz-tray${unplaced.length === 0 ? ' pz-tray--empty' : ''}${
-          drag?.overTray ? ' pz-tray--over' : ''
+          drag?.returning ? ' pz-tray--over' : ''
         }`}
       >
         {/*
@@ -494,7 +514,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
           );
         })}
         {unplaced.length === 0 && <span className="pz-tray__done">全部放完了</span>}
-        {drag?.overTray && <span className="pz-tray__hint">松手，这块就放回待选区</span>}
+        {drag?.returning && <span className="pz-tray__hint">松手，这块就收回待选区</span>}
       </div>
 
       {/*
