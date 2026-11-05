@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AES Pad · 本地加密便签</title>
+<meta name="description" content="在浏览器本地用 AES-256-GCM 加密文本，不联网、不上传、无需安装。">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234f46e5'/%3E%3Cpath d='M10 14h12a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 22 24H10a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 10 14Zm2.5 0v-3a3.5 3.5 0 1 1 7 0v3' fill='none' stroke='%23fff' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4.2" y="10" width="15.6" height="10.2" rx="2.6"></rect>
+          <path d="M8.2 10V6.9a3.8 3.8 0 0 1 7.6 0V10"></path>
+        </svg>
+      </span>
+      <span class="brand__text">
+        <strong>AES Pad</strong>
+        <small>本地加密便签</small>
+      </span>
+    </div>
+
+    <div class="topbar__tools">
+      <button type="button" class="icon-btn" id="themeBtn" title="切换主题" aria-label="切换主题">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="4.2"></circle>
+          <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"></path>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.5 14.3A8.5 8.5 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z"></path>
+        </svg>
+      </button>
+      <button type="button" class="icon-btn" id="settingsBtn" title="设置" aria-label="设置" aria-expanded="false" aria-controls="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.2"></circle>
+          <path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a1.9 1.9 0 1 1-2.7 2.7l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a1.9 1.9 0 1 1-3.8 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a1.9 1.9 0 1 1-2.7-2.7l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a1.9 1.9 0 1 1 0-3.8h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a1.9 1.9 0 1 1 2.7-2.7l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a1.9 1.9 0 1 1 3.8 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a1.9 1.9 0 1 1 2.7 2.7l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a1.9 1.9 0 1 1 0 3.8h-.1a1.6 1.6 0 0 0-1.5 1Z"></path>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="settings" id="settings" hidden>
+    <div class="settings__group">
+      <div class="settings__head">
+        <span class="settings__label">输出格式</span>
+        <div class="mini-seg" id="formatSwitch">
+          <button type="button" data-format="AESv2" class="is-active">AESv2</button>
+          <button type="button" data-format="legacy">AESCryptoV10</button>
+        </div>
+      </div>
+      <p class="settings__hint" id="formatHint"></p>
+    </div>
+
+    <label class="settings__check">
+      <input type="checkbox" id="clearOnHide" checked>
+      <span>页面切到后台时清除口令</span>
+    </label>
+  </section>
+
+  <main class="main">
+
+    <section class="keypad" aria-label="口令">
+      <div class="keypad__field">
+        <svg class="keypad__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <circle cx="8" cy="15" r="4"></circle>
+          <path d="M10.9 12.1 20 3M17 5l2.2 2.2M14.4 7.6 16.6 9.8"></path>
+        </svg>
+        <input id="password" class="keypad__input" type="password" placeholder="口令 — 用一串不相关的词，别用生日或手机号"
+               autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="口令">
+        <button type="button" class="in-btn" id="togglePw" title="显示 / 隐藏口令" aria-label="显示口令">
+          <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2.2 12S5.8 5.9 12 5.9 21.8 12 21.8 12 18.2 18.1 12 18.1 2.2 12 2.2 12Z"></path>
+            <circle cx="12" cy="12" r="2.6"></circle>
+          </svg>
+          <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4l16 16"></path>
+            <path d="M9.6 5.2A9.9 9.9 0 0 1 12 4.9c6.2 0 9.8 7.1 9.8 7.1a17 17 0 0 1-3 3.8M6.2 7.4a17 17 0 0 0-4 4.6s3.6 7.1 9.8 7.1a9.6 9.6 0 0 0 3.4-.6"></path>
+            <path d="M10.2 10.3a2.6 2.6 0 0 0 3.6 3.6"></path>
+          </svg>
+        </button>
+        <button type="button" class="in-btn" id="clearPw" title="清除口令" aria-label="清除口令">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+            <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="meter" id="meter" data-level="0">
+        <span class="meter__bars"><i></i><i></i><i></i><i></i></span>
+        <span class="meter__text" id="meterText">口令强度</span>
+      </div>
+    </section>
+
+    <div class="panes">
+
+      <section class="pane" id="panePlain">
+        <div class="pane__head">
+          <h2 class="pane__title">明文</h2>
+          <div class="pane__tools">
+            <span class="pane__count" id="plainCount">0 字符</span>
+            <button type="button" class="ghost-btn" id="copyPlain" disabled>复制</button>
+            <button type="button" class="ghost-btn" id="clearPlain">清空</button>
+          </div>
+        </div>
+        <textarea id="plain" class="pane__box" placeholder="要加密的内容写这里；解密出来的原文也回显在这里…"
+                  spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+      </section>
+
+      <section class="pane" id="paneCipher">
+        <div class="pane__head">
+          <h2 class="pane__title">密文</h2>
+          <div class="pane__tools">
+            <span class="pane__count" id="cipherCount">0 字符</span>
+            <button type="button" class="ghost-btn" id="copyCipher" disabled>复制</button>
+            <button type="button" class="ghost-btn" id="clearCipher">清空</button>
+          </div>
+        </div>
+        <textarea id="cipher" class="pane__box pane__box--mono" placeholder="加密结果回显在这里；要解密就把密文粘到这里…"
+                  spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+      </section>
+
+    </div>
+
+    <details class="spec">
+      <summary>加密参数与安全说明</summary>
+      <dl class="spec__list">
+        <div><dt>加密算法</dt><dd>AES-256-GCM（128 位认证标签，带完整性校验）</dd></div>
+        <div><dt>密钥派生</dt><dd>PBKDF2-HMAC-SHA-256，600,000 次迭代，16 字节随机盐</dd></div>
+        <div><dt>随机数源</dt><dd>crypto.getRandomValues（系统 CSPRNG），每次加密独立 IV</dd></div>
+        <div><dt>密文格式</dt><dd>AESv2. + base64url(盐 16B ‖ IV 12B ‖ 密文 ‖ 标签 16B)</dd></div>
+        <div><dt>批量模式</dt><dd>每行一条，整批共用一个随机盐（密钥只派生一次），每条各自独立 IV</dd></div>
+        <div><dt>兼容旧版</dt><dd>可解密 aescrypto.com 的 AESCryptoV10 与 OpenSSL Salted__ 密文</dd></div>
+        <div><dt>数据流向</dt><dd>全程本地计算，页面没有任何网络请求；只保存主题/格式偏好，绝不保存口令与文本</dd></div>
+      </dl>
+      <p class="spec__warn">提醒：浏览器端加密只能保护「传输通道」这一段。如果你的设备已被入侵，或口令本身太弱，仍可能被破解。重要内容请配合可信设备与强口令使用。</p>
+      <div class="spec__actions">
+        <button type="button" class="ghost-btn ghost-btn--outline" id="selfTestBtn">运行环境自检</button>
+        <span class="spec__result" id="selfTestResult">在本机跑一遍加密→解密，确认不是环境问题</span>
+      </div>
+    </details>
+
+    <div class="actionbar">
+      <div class="progress" id="progress" hidden><i id="progressBar"></i></div>
+
+      <div class="actionbar__row">
+        <p class="status" id="status" role="status" aria-live="polite">
+          <span class="status__dot"></span><span class="status__text">准备就绪</span>
+        </p>
+        <div class="actionbar__meta">
+          <button type="button" class="icon-btn" id="swapBtn" title="交换两侧内容" aria-label="交换两侧内容">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M7.5 4v15M7.5 19 4 15.5M7.5 19 11 15.5"></path>
+              <path d="M16.5 20V5M16.5 5 13 8.5M16.5 5 20 8.5"></path>
+            </svg>
+          </button>
+          <label class="switch" title="批量：输入按行切分，逐行加解密">
+            <input type="checkbox" id="batchToggle" aria-label="批量模式">
+            <span class="switch__track" aria-hidden="true"></span>
+            <span class="switch__text">批量</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="primary" id="encryptBtn">
+          <span class="primary__spinner" aria-hidden="true"></span>
+          <span class="primary__label">加密</span>
+          <svg class="primary__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.5 12h14M13 6.5 18.5 12 13 17.5"></path>
+          </svg>
+        </button>
+        <button type="button" class="primary primary--alt" id="decryptBtn">
+          <span class="primary__spinner" aria-hidden="true"></span>
+          <svg class="primary__arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19.5 12h-14M11 6.5 5.5 12 11 17.5"></path>
+          </svg>
+          <span class="primary__label">解密</span>
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <span>全部计算在本机完成</span>
+    <span class="footer__dot">·</span>
+    <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Enter</kbd> 加密</span>
+    <span class="footer__dot">·</span>
+    <span><kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Enter</kbd> 解密</span>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="js/core.js" defer></script>
+<script src="js/legacy.js" defer></script>
+<script src="js/ui.js" defer></script>
+</body>
+</html>
