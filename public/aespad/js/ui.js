@@ -1,6 +1,6 @@
 /*!
  * AES Pad · ui.js
- * 交互层：双栏直给（明文 / 密文各一栏，两个动作按钮），含批量模式。
+ * 交互层：单输入框原位加解密，含批量模式。
  * localStorage 只存「主题 / 格式 / 开关」，绝不存口令与文本。
  */
 (function () {
@@ -37,15 +37,12 @@
     meter: document.getElementById('meter'),
     meterText: document.getElementById('meterText'),
 
-    plain: document.getElementById('plain'),
-    plainCount: document.getElementById('plainCount'),
-    copyPlain: document.getElementById('copyPlain'),
-    clearPlain: document.getElementById('clearPlain'),
-
-    cipher: document.getElementById('cipher'),
-    cipherCount: document.getElementById('cipherCount'),
-    copyCipher: document.getElementById('copyCipher'),
-    clearCipher: document.getElementById('clearCipher'),
+    content: document.getElementById('content'),
+    contentCount: document.getElementById('contentCount'),
+    contentHint: document.getElementById('contentHint'),
+    contentKind: document.getElementById('contentKind'),
+    copyContent: document.getElementById('copyContent'),
+    clearContent: document.getElementById('clearContent'),
 
     status: document.getElementById('status'),
     statusText: document.querySelector('#status .status__text'),
@@ -53,7 +50,6 @@
     decryptBtn: document.getElementById('decryptBtn'),
     encryptLabel: document.querySelector('#encryptBtn .primary__label'),
     decryptLabel: document.querySelector('#decryptBtn .primary__label'),
-    swapBtn: document.getElementById('swapBtn'),
     batchToggle: document.getElementById('batchToggle'),
     progress: document.getElementById('progress'),
     progressBar: document.getElementById('progressBar'),
@@ -167,13 +163,54 @@
 
   /* ---------------- 计数 ---------------- */
 
-  function updateCounts() {
-    var p = el.plain.value.length;
-    var c = el.cipher.value.length;
-    el.plainCount.textContent = p ? p.toLocaleString() + ' 字符' : '0 字符';
-    el.cipherCount.textContent = c ? c.toLocaleString() + ' 字符' : '0 字符';
-    el.copyPlain.disabled = p === 0;
-    el.copyCipher.disabled = c === 0;
+  function formatName(format) {
+    if (format === 'AESv2') return 'AESv2';
+    if (format === 'OpenSSL') return 'OpenSSL';
+    if (format === 'AESCryptoV10') return 'AESCryptoV10';
+    if (format === 'legacy-hex') return '旧版密文';
+    return '';
+  }
+
+  function renderContentMeta() {
+    var text = el.content.value;
+    var trimmed = text.trim();
+    var length = text.length;
+    el.contentCount.textContent = length ? length.toLocaleString() + ' 字符' : '0 字符';
+    el.copyContent.disabled = length === 0;
+    el.contentKind.classList.remove('is-cipher');
+    el.content.classList.remove('is-cipher');
+
+    if (!trimmed) {
+      el.contentHint.textContent = '加密时输入明文，解密时粘贴密文';
+      el.contentKind.textContent = '等待输入';
+      return;
+    }
+
+    var lines = trimmed.split(/\r?\n/).filter(function (line) {
+      return line.trim();
+    });
+    var first = lines[0] || '';
+    var format = core.detectFormat(first);
+    var isCipher = lines.every(function (line) {
+      return core.looksEncrypted(line);
+    });
+
+    if (isCipher) {
+      el.contentHint.textContent = state.batch
+        ? '已按行识别密文，可直接批量解密'
+        : '已识别密文，输入口令后即可解密';
+      el.contentKind.textContent = formatName(format) || '密文';
+      el.contentKind.classList.add('is-cipher');
+      el.content.classList.add('is-cipher');
+      return;
+    }
+
+    el.contentHint.textContent = state.batch
+      ? '批量模式下每行作为一条独立内容'
+      : '当前内容是明文，输入口令后即可加密';
+    el.contentKind.textContent = state.batch && lines.length > 1
+      ? lines.length + ' 行明文'
+      : '明文';
   }
 
   /* ---------------- 批量文案 ---------------- */
@@ -183,6 +220,7 @@
     el.encryptLabel.textContent = state.batch ? '批量加密' : '加密';
     el.decryptLabel.textContent = state.batch ? '批量解密' : '解密';
     document.body.classList.toggle('is-batch', state.batch);
+    renderContentMeta();
     if (!state.busy) {
       setStatus('idle', state.batch ? '批量模式：每行一条，空行会保留占位' : '准备就绪');
     }
@@ -211,30 +249,6 @@
     el.decryptBtn.classList.toggle('is-busy', busy && which === 'decrypt');
   }
 
-  /* ---------------- 输入源解析 ---------------- */
-
-  /**
-   * 加密读明文栏、写密文栏；解密读密文栏、写明文栏。
-   * 若目标源栏为空而另一栏装着"这次操作该吃的东西"（用户粘错框），
-   * 就先把内容搬到它该待的栏里，再照常执行——视觉上内容会自己归位。
-   */
-  function resolve(direction) {
-    var src = direction === 'encrypt' ? el.plain : el.cipher;
-    var dst = direction === 'encrypt' ? el.cipher : el.plain;
-
-    if (!src.value.trim() && dst.value.trim()) {
-      var dstLooksCipher = core.looksEncrypted(dst.value);
-      var wantCipherInput = direction === 'decrypt';
-      if (dstLooksCipher === wantCipherInput) {
-        src.value = dst.value;
-        dst.value = '';
-        updateCounts();
-        return { src: src, dst: dst, moved: true };
-      }
-    }
-    return { src: src, dst: dst, moved: false };
-  }
-
   function splitLines(text) {
     return text.replace(/\r\n/g, '\n').split('\n');
   }
@@ -244,13 +258,12 @@
   function run(direction) {
     if (state.busy) return;
 
-    var target = resolve(direction);
-    var text = target.src.value;
+    var text = el.content.value;
     var password = el.password.value;
 
     if (!text.trim()) {
-      setStatus('error', direction === 'encrypt' ? '明文栏还没有内容' : '密文栏还没有内容');
-      target.src.focus();
+      setStatus('error', direction === 'encrypt' ? '请先输入要加密的内容' : '请先粘贴要解密的密文');
+      el.content.focus();
       return;
     }
     if (!password) {
@@ -264,13 +277,19 @@
     var started = now();
 
     if (state.batch) {
-      runBatch(direction, target, text, password, started);
+      runBatch(direction, text, password, started);
     } else {
-      runSingle(direction, target, text, password, started);
+      runSingle(direction, text, password, started);
     }
   }
 
-  function runSingle(direction, target, text, password, started) {
+  function fillContent(text) {
+    el.content.value = text;
+    el.content.scrollTop = 0;
+    renderContentMeta();
+  }
+
+  function runSingle(direction, text, password, started) {
     var task;
     if (direction === 'encrypt') {
       task = state.format === 'legacy' ? legacy.encryptLegacy(text, password) : core.encrypt(text, password);
@@ -284,30 +303,26 @@
         setBusy(false);
 
         if (direction === 'encrypt') {
-          target.dst.value = result;
-          updateCounts();
+          fillContent(result);
           setStatus('ok', '已加密 · ' + text.length + ' → ' + result.length + ' 字符 · ' + elapsed + 's');
         } else {
-          target.dst.value = result.text;
-          updateCounts();
+          fillContent(result.text);
           var note = '已解密 · ' + formatLabel(result.format) + ' · 校验通过 · ' + elapsed + 's';
           if (result.passwordAdjusted) {
             note += ' · 已按去掉首尾空格的口令重试成功';
             toast('原版会忽略口令首尾空格，已据此解开');
           }
-          if (target.moved) note += ' · 已从另一侧读取';
           setStatus('ok', note);
         }
       })
       .catch(function (err) {
         setBusy(false);
-        target.dst.value = '';
-        updateCounts();
+        renderContentMeta();
         setStatus('error', errorMessage(err, direction));
       });
   }
 
-  function runBatch(direction, target, text, password, started) {
+  function runBatch(direction, text, password, started) {
     var lines = splitLines(text);
     var total = lines.length;
     setProgress(0, total);
@@ -361,8 +376,7 @@
         var elapsed = ((now() - started) / 1000).toFixed(2);
         setBusy(false);
         resetProgress();
-        target.dst.value = res.lines.join('\n');
-        updateCounts();
+        fillContent(res.lines.join('\n'));
 
         var totalReal = res.total || total;
         var summary = direction === 'encrypt'
@@ -386,8 +400,7 @@
       .catch(function (err) {
         setBusy(false);
         resetProgress();
-        target.dst.value = '';
-        updateCounts();
+        renderContentMeta();
         setStatus('error', errorMessage(err, direction));
       });
   }
@@ -401,7 +414,7 @@
 
   function errorMessage(err, direction) {
     var code = err && err.code;
-    if (code === 'EMPTY_INPUT') return direction === 'encrypt' ? '明文栏还没有内容' : '密文栏还没有内容';
+    if (code === 'EMPTY_INPUT') return direction === 'encrypt' ? '请先输入要加密的内容' : '请先粘贴要解密的密文';
     if (code === 'EMPTY_PASSWORD') return '请先输入口令';
     if (code === 'AUTH_FAILED') {
       var hint = '解密失败：口令不对，或密文被改动过（完整性校验未通过）';
@@ -421,7 +434,7 @@
     return '出错了：' + (err && err.message ? err.message : '未知错误');
   }
 
-  /* ---------------- 复制 / 交换 / 清空 ---------------- */
+  /* ---------------- 复制 / 清空 ---------------- */
 
   function copyFrom(node, btn) {
     var text = node.value;
@@ -455,15 +468,6 @@
     }
   }
 
-  function swapSides() {
-    if (state.busy) return;
-    var p = el.plain.value;
-    el.plain.value = el.cipher.value;
-    el.cipher.value = p;
-    updateCounts();
-    setStatus('idle', '已交换两侧内容');
-  }
-
   /* ---------------- 设置渲染 ---------------- */
 
   function renderFormatHint() {
@@ -487,12 +491,9 @@
     run('decrypt');
   });
 
-  [el.plain, el.cipher].forEach(function (node) {
-    node.addEventListener('input', updateCounts);
-  });
-
-  el.cipher.addEventListener('paste', function () {
-    window.setTimeout(updateCounts, 0);
+  el.content.addEventListener('input', renderContentMeta);
+  el.content.addEventListener('paste', function () {
+    window.setTimeout(renderContentMeta, 0);
   });
 
   el.password.addEventListener('input', renderMeter);
@@ -515,28 +516,16 @@
     el.password.focus();
   });
 
-  el.copyPlain.addEventListener('click', function () {
-    copyFrom(el.plain, el.copyPlain);
-  });
-  el.copyCipher.addEventListener('click', function () {
-    copyFrom(el.cipher, el.copyCipher);
+  el.copyContent.addEventListener('click', function () {
+    copyFrom(el.content, el.copyContent);
   });
 
-  el.clearPlain.addEventListener('click', function () {
-    el.plain.value = '';
-    updateCounts();
-    setStatus('idle', '已清空明文栏');
-    el.plain.focus();
+  el.clearContent.addEventListener('click', function () {
+    el.content.value = '';
+    renderContentMeta();
+    setStatus('idle', '已清空内容');
+    el.content.focus();
   });
-
-  el.clearCipher.addEventListener('click', function () {
-    el.cipher.value = '';
-    updateCounts();
-    setStatus('idle', '已清空密文栏');
-    el.cipher.focus();
-  });
-
-  el.swapBtn.addEventListener('click', swapSides);
 
   el.batchToggle.addEventListener('change', function () {
     state.batch = el.batchToggle.checked;
@@ -635,10 +624,10 @@
     el.themeBtn.title = resolvedTheme() === 'dark' ? '切换到浅色' : '切换到深色';
   }
 
-  updateCounts();
+  renderContentMeta();
   renderMeter();
   renderBatchState();
   setStatus('idle', '准备就绪');
 
-  el.plain.focus();
+  el.content.focus();
 })();

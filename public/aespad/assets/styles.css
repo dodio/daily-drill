@@ -166,7 +166,7 @@ textarea { resize: none; }
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 1120px;
+  max-width: 860px;
   min-height: 100vh;
   min-height: 100dvh;
   margin: 0 auto;
@@ -525,58 +525,82 @@ code {
 .meter[data-level="4"] .meter__bars i { background: var(--ok); }
 .meter[data-level="4"] .meter__text { color: var(--ok); }
 
-/* ---------- panes ---------- */
+/* ---------- editor ---------- */
 
-.panes {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
-}
-
-.pane {
+.editor {
+  position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 200px;
+  flex: 1;
+  min-height: 300px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
   transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 
-.pane:focus-within {
-  border-color: var(--border-strong);
+.editor::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), transparent 88%);
+  opacity: 0.72;
+}
+
+.editor:focus-within {
+  border-color: var(--accent);
   box-shadow: var(--shadow-md);
 }
 
-.pane__head {
+.editor__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px 10px 15px;
+  padding: 12px 13px 12px 17px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
 }
 
-.pane__title {
-  font-size: 12.5px;
+.editor__heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.editor__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.editor__title {
+  font-size: 14px;
   font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-soft);
+  letter-spacing: -0.01em;
+  color: var(--text);
 }
 
-.pane__tools {
+.editor__tools {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.pane__count {
+.editor__count {
   margin-right: 4px;
   font-size: 11.5px;
   color: var(--muted);
@@ -596,29 +620,66 @@ code {
 .ghost-btn:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
 .ghost-btn:disabled { opacity: 0.38; cursor: default; }
 
-.pane__box {
+.editor__box {
   flex: 1;
   width: 100%;
-  min-height: 150px;
-  padding: 14px 15px;
+  min-height: 230px;
+  padding: 18px;
   border: 0;
   background: transparent;
-  font-size: 14.5px;
-  line-height: 1.65;
+  font-size: 15px;
+  line-height: 1.7;
   color: var(--text);
   overflow: auto;
+  resize: none;
 }
 
-.pane__box:focus { outline: none; box-shadow: none; }
-.pane__box::placeholder { color: var(--muted); opacity: 0.8; }
+.editor__box:focus { outline: none; box-shadow: none; }
+.editor__box::placeholder { color: var(--muted); opacity: 0.8; }
 
-.pane__box--mono {
+.editor__box.is-cipher {
   font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.75;
   letter-spacing: -0.01em;
   word-break: break-all;
   color: var(--text-soft);
+}
+
+.editor__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 7px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.editor__foot > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor__kind {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.editor__kind.is-cipher {
+  border-color: rgba(79, 70, 229, 0.18);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 /* ---------- actionbar ---------- */
@@ -923,15 +984,8 @@ code {
 @media (min-width: 860px) {
   .app { padding: 0 26px; }
 
-  .panes {
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    align-items: stretch;
-  }
-
-  .pane { min-height: clamp(300px, 40vh, 520px); }
-
-  .pane__box { font-size: 15px; }
+  .editor { min-height: clamp(340px, 48vh, 560px); }
+  .editor__box { padding: 22px; }
 
   .keypad__field { height: 56px; }
 

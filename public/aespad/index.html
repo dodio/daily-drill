@@ -99,35 +99,27 @@
       </div>
     </section>
 
-    <div class="panes">
-
-      <section class="pane" id="panePlain">
-        <div class="pane__head">
-          <h2 class="pane__title">明文</h2>
-          <div class="pane__tools">
-            <span class="pane__count" id="plainCount">0 字符</span>
-            <button type="button" class="ghost-btn" id="copyPlain" disabled>复制</button>
-            <button type="button" class="ghost-btn" id="clearPlain">清空</button>
-          </div>
+    <section class="editor" aria-labelledby="editorTitle">
+      <div class="editor__head">
+        <div class="editor__heading">
+          <span class="editor__eyebrow">自动识别</span>
+          <h2 class="editor__title" id="editorTitle">内容</h2>
         </div>
-        <textarea id="plain" class="pane__box" placeholder="要加密的内容写这里；解密出来的原文也回显在这里…"
-                  spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
-      </section>
-
-      <section class="pane" id="paneCipher">
-        <div class="pane__head">
-          <h2 class="pane__title">密文</h2>
-          <div class="pane__tools">
-            <span class="pane__count" id="cipherCount">0 字符</span>
-            <button type="button" class="ghost-btn" id="copyCipher" disabled>复制</button>
-            <button type="button" class="ghost-btn" id="clearCipher">清空</button>
-          </div>
+        <div class="editor__tools">
+          <span class="editor__count" id="contentCount">0 字符</span>
+          <button type="button" class="ghost-btn" id="copyContent" disabled>复制</button>
+          <button type="button" class="ghost-btn" id="clearContent">清空</button>
         </div>
-        <textarea id="cipher" class="pane__box pane__box--mono" placeholder="加密结果回显在这里；要解密就把密文粘到这里…"
-                  spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
-      </section>
-
-    </div>
+      </div>
+      <textarea id="content" class="editor__box"
+                placeholder="输入要加密的明文，或粘贴要解密的密文…"
+                spellcheck="false" autocapitalize="off" autocorrect="off"
+                aria-describedby="contentHint"></textarea>
+      <div class="editor__foot">
+        <span id="contentHint">加密时输入明文，解密时粘贴密文</span>
+        <span class="editor__kind" id="contentKind">等待输入</span>
+      </div>
+    </section>
 
     <details class="spec">
       <summary>加密参数与安全说明</summary>
@@ -155,12 +147,6 @@
           <span class="status__dot"></span><span class="status__text">准备就绪</span>
         </p>
         <div class="actionbar__meta">
-          <button type="button" class="icon-btn" id="swapBtn" title="交换两侧内容" aria-label="交换两侧内容">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M7.5 4v15M7.5 19 4 15.5M7.5 19 11 15.5"></path>
-              <path d="M16.5 20V5M16.5 5 13 8.5M16.5 5 20 8.5"></path>
-            </svg>
-          </button>
           <label class="switch" title="批量：输入按行切分，逐行加解密">
             <input type="checkbox" id="batchToggle" aria-label="批量模式">
             <span class="switch__track" aria-hidden="true"></span>
