@@ -46,6 +46,17 @@ export const SUBJECTS: SubjectMeta[] = [
     group: 'puzzle',
     unit: '关',
   },
+  {
+    id: 'sudoku',
+    name: '数独',
+    en: 'Sudoku',
+    icon: '🧠',
+    desc: '教学入门，再到中等与困难',
+    route: '/sudoku',
+    ready: true,
+    group: 'puzzle',
+    unit: '关',
+  },
 ];
 
 export function getSubject(id: string): SubjectMeta | undefined {

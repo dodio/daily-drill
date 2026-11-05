@@ -1,5 +1,5 @@
 /** 科目标识。新增科目时在此扩展，并在 src/modules 下建立对应目录。 */
-export type SubjectId = 'math' | 'recite' | 'words' | 'puzzle';
+export type SubjectId = 'math' | 'recite' | 'words' | 'puzzle' | 'sudoku';
 
 /** 单道错题的快照，用于复盘。 */
 export interface WrongItem {

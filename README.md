@@ -24,7 +24,7 @@
 src/
 ├── main.tsx                  入口
 ├── App.tsx                   路由表
-├── index.css                 设计 token + 全部样式
+├── index.css                 全局设计 token 与公共样式
 ├── types/index.ts            全局类型（SessionRecord 是持久化核心）
 ├── data/
 │   ├── subjects.ts           科目注册表（新增科目从这里入手）
@@ -49,11 +49,17 @@ src/
 │   │   ├── MathSetup.tsx     难度 / 题型（可多选）/ 练法（按题数 or 按时间）
 │   │   ├── MathQuiz.tsx      答题（数字键盘 + 物理键盘；限时模式带倒计时）
 │   │   └── generator.ts      题目生成
-│   └── recite/               背诵
-│       ├── RecitePage.tsx
-│       ├── ReciteSetup.tsx
-│       ├── ReciteQuiz.tsx
-│       └── generator.ts      接句题 + 干扰项
+│   ├── recite/               背诵
+│   │   ├── RecitePage.tsx
+│   │   ├── ReciteSetup.tsx
+│   │   ├── ReciteQuiz.tsx
+│   │   └── generator.ts      接句题 + 干扰项
+│   └── sudoku/               数独
+│       ├── SudokuPage.tsx    选关、游戏、结算流程
+│       ├── SudokuSetup.tsx   教学关与难度选择
+│       ├── SudokuGame.tsx    9×9 棋盘、数字键盘与提示
+│       ├── generator.ts      唯一解题面生成
+│       └── progress.ts       关卡完成情况与最佳时间
 └── pages/
     ├── Home.tsx
     └── NotFound.tsx
@@ -155,6 +161,7 @@ npm run typecheck  # 只做类型检查
 - [x] 口算限时模式：2 / 5 / 10 分钟，时间内统计答对答错与每分钟题数
 - [x] 背诵：古诗接句四选一
 - [x] 背诵按年级 + 上下册分册，一、二年级 30 篇
+- [x] 数独：3 个教学关、非常容易 / 中等 / 困难各 5 关
 - [x] 记住上次选的参数（难度/题型/年级/册）
 - [ ] 英语单词（看词选义）
 - [ ] 错题本：跨天沉淀、只练错题

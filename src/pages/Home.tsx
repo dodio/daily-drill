@@ -36,7 +36,7 @@ export function Home() {
 
   const handleSelect = (subject: SubjectMeta) => {
     if (!subject.ready) {
-      setToast(`${subject.name}模块开发中，先去练口算、背诵或拼图`);
+      setToast(`${subject.name}模块开发中，先去练口算、背诵或玩益智游戏`);
       return;
     }
     navigate(subject.route);

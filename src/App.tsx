@@ -4,6 +4,7 @@ import { NotFound } from './pages/NotFound.tsx';
 import { MathPage } from './modules/math/MathPage.tsx';
 import { RecitePage } from './modules/recite/RecitePage.tsx';
 import { PuzzlePage } from './modules/puzzle/PuzzlePage.tsx';
+import { SudokuPage } from './modules/sudoku/SudokuPage.tsx';
 
 export default function App() {
   const route = useRoute();
@@ -17,6 +18,8 @@ export default function App() {
       return <RecitePage />;
     case '/puzzle':
       return <PuzzlePage />;
+    case '/sudoku':
+      return <SudokuPage />;
     default:
       return <NotFound />;
   }
