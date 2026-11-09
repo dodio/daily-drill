@@ -72,6 +72,9 @@ const OUT_SLOP = 0.5;
  */
 const TRAY_CELL = 22;
 
+/** 两次提示之间至少等待 60 秒，避免孩子们连续点按钮跳过思考。 */
+const HINT_COOLDOWN_MS = 60_000;
+
 /**
  * 拼满后的浮层。这里必须给一个明确的出口按钮：
  * 早先是 900ms 后自动进下一关，孩子还没看清「拼好啦」画面就被换走了，
@@ -95,11 +98,14 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
   const [hint, setHint] = useState<Cell[] | null>(null);
+  const [hintRemaining, setHintRemaining] = useState(0);
   const [done, setDone] = useState(false);
 
   const boardRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const hintReadyAtRef = useRef(0);
+  const hintHideTimerRef = useRef<number | null>(null);
   dragRef.current = drag;
 
   /**
@@ -130,6 +136,27 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   }, []);
 
   const dragPieceId = drag?.pieceId ?? null;
+
+  useEffect(() => {
+    if (hintRemaining <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((hintReadyAtRef.current - Date.now()) / 1000),
+      );
+      setHintRemaining(remaining);
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [hintRemaining]);
+
+  useEffect(
+    () => () => {
+      if (hintHideTimerRef.current !== null) {
+        window.clearTimeout(hintHideTimerRef.current);
+      }
+    },
+    [],
+  );
 
   /** 每格被哪一块占着，-1 表示空。正在拖的那块不算占位，否则它自己挡住自己 */
   const occupied = useMemo(() => {
@@ -369,6 +396,7 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
   };
 
   const showHint = () => {
+    if (Date.now() < hintReadyAtRef.current) return;
     const targets = pieces.filter((p) => placed[p.id] === undefined);
     if (targets.length === 0) return;
     const piece = targets[Math.floor(Math.random() * targets.length)];
@@ -376,7 +404,15 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
     setHint(
       piece.cells.map((c) => ({ x: piece.solution.x + c.x, y: piece.solution.y + c.y })),
     );
-    window.setTimeout(() => setHint(null), 1800);
+    hintReadyAtRef.current = Date.now() + HINT_COOLDOWN_MS;
+    setHintRemaining(Math.ceil(HINT_COOLDOWN_MS / 1000));
+    if (hintHideTimerRef.current !== null) {
+      window.clearTimeout(hintHideTimerRef.current);
+    }
+    hintHideTimerRef.current = window.setTimeout(() => {
+      setHint(null);
+      hintHideTimerRef.current = null;
+    }, 1800);
   };
 
   const cellStyle = (x: number, y: number, w: number, h: number): CSSProperties => ({
@@ -555,8 +591,18 @@ export function PuzzleGame({ puzzle, onFinish, onNext, isLast }: Props) {
             >
               重来
             </button>
-            <button type="button" className="pz-hintbtn" onClick={showHint}>
-              看一眼提示
+            <button
+              type="button"
+              className="pz-hintbtn"
+              onClick={showHint}
+              disabled={hintRemaining > 0}
+              aria-label={
+                hintRemaining > 0
+                  ? `提示冷却中，${hintRemaining} 秒后可再次使用`
+                  : '看一眼提示，使用后需等待 60 秒'
+              }
+            >
+              {hintRemaining > 0 ? `${hintRemaining}s 后可提示` : '看一眼提示'}
             </button>
           </div>
         )}
